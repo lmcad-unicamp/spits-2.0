@@ -1,0 +1,7 @@
+This example shows the minimum amount of code required to create a Spitz-compliant module in C++. 
+
+A module contains a Job Manager, responsible for producing idempotent tasks, that will be sent to Workers without any compromise with order and which results will, then, be sent to a Committer, responsible for composing the final result from the received tasks.
+
+Additionally, if a module depends on the execution of multiple jobs, it can define a Spitz Main reponsible for coordinating the execution of the jobs.
+
+If you run this example, it will not finish until properly modify the boilerplate to stop generating tasks.

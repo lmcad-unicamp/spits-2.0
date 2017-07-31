@@ -1,0 +1,19 @@
+This is a bundle containing some examples for developing and executing modules using the SPITS programming model proposed by Borin et al. in "Efficient and Fault Tolerant Computation of Partially Idempotent Tasks".
+
+The bundle contains a list of examples of how to develop a spits module, the reference implementation for spits, called spitz-python, and scripts to build and run the examples.
+
+SETTING UP FOR RUNNING:
+
+    The building script uses g++ as the default compiler, you can change it if necessary.
+    To build the examples, call build-examples.sh from inside the root of the bundle. A 'bin' directory will be created with all the examples.
+
+RUNNING THE EXAMPLES:
+
+    To run the examples, call run-X.sh from inside the root of the bundle. A 'run' directory will be created containing the result of the execution of each example.
+
+    Additionally, the examples are compiled in to a self-contained, serial executable, they are named with a suffix '-serial' inside the 'bin' directory.
+
+FURTHER READING:
+
+    Check the spitz-python's README for information on how to perform more elaborated executions and the README of each example. Also check the paper "Efficient and Fault Tolerant Computation of Partially Idempotent Tasks" to know more about the SPITS programming model and the problems it aims to solve.
+

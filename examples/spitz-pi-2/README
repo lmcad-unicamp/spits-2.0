@@ -1,0 +1,2 @@
+This example shows how the Spitz programming model can be used to compute a multi-staged job. The value of pi is computed twice using different number if iteractions and the error is compared.
+
