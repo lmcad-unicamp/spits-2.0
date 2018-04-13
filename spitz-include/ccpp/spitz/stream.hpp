@@ -47,8 +47,8 @@ namespace spitz {
         {
             if (htons(1) == 1)
                 return x;
-            uint32_t lo = (x & 0xFFFFFFFF00000000) >> 32;
-            uint32_t hi = x & 0x00000000FFFFFFFF;
+            uint32_t lo = static_cast<uint32_t>((x & 0xFFFFFFFF00000000) >> 32);
+            uint32_t hi = static_cast<uint32_t>(x & 0x00000000FFFFFFFF);
             uint64_t nlo = htonl(lo);
             uint64_t nhi = htonl(hi);
             return nhi << 32 | nlo;
@@ -140,8 +140,8 @@ namespace spitz {
         {
             if (ntohs(1) == 1)
                 return x;
-            uint32_t lo = (x & 0xFFFFFFFF00000000) >> 32;
-            uint32_t hi = x & 0x00000000FFFFFFFF;
+            uint32_t lo = static_cast<uint32_t>((x & 0xFFFFFFFF00000000) >> 32);
+            uint32_t hi = static_cast<uint32_t>(x & 0x00000000FFFFFFFF);
             uint64_t nlo = htonl(lo);
             uint64_t nhi = htonl(hi);
             return nhi << 32 | nlo;
