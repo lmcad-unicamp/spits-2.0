@@ -113,6 +113,7 @@ namespace spitz {
         ostream& operator<<(const int64_t& v)     { write_longlong(v); return *this; }
         ostream& operator<<(const uint8_t& v)     { write_byte(v); return *this; }
         ostream& operator<<(const uint16_t& v)    { write_ushort(v); return *this; }
+        ostream& operator<<(const uint32_t& v)    { write_uint(v); return *this; }
         ostream& operator<<(const uint64_t& v)    { write_ulonglong(v); return *this; }
         ostream& operator<<(const int& v)         { write_int(v); return *this; }
         ostream& operator<<(const bool& v)        { write_bool(v); return *this; }
