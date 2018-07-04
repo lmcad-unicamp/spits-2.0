@@ -25,6 +25,10 @@
 from libspitz import JobBinary, SimpleEndpoint
 from libspitz import messaging, config
 from libspitz import memstat
+from libspitz import make_uid
+from libspitz import log_lines
+
+from libspitz import PerfModule
 
 import Args
 import sys, threading, os, time, ctypes, logging, struct, threading, traceback
@@ -40,6 +44,9 @@ jm_send_timeout = None # Socket send timeout
 jm_send_backoff = None # Job Manager delay between sending tasks
 jm_recv_backoff = None # Job Manager delay between sending tasks
 jm_memstat = None # 1 to display memory statistics
+jm_profiling = None # 1 to enable profiling
+jm_perf_rinterv = None # Profiling report interval (seconds)
+jm_perf_subsamp = None # Number of samples collected between report intervals
 jm_heartbeat_interval = None
 jm_jobid = None
 
@@ -49,7 +56,8 @@ jm_jobid = None
 def parse_global_config(argdict):
     global jm_killtms, jm_log_file, jm_verbosity, jm_heart_timeout, \
         jm_conn_timeout, jm_recv_timeout, jm_send_timeout, jm_send_backoff, \
-        jm_recv_backoff, jm_memstat, jm_heartbeat_interval, jm_jobid
+        jm_recv_backoff, jm_memstat, jm_profiling, jm_perf_rinterv, \
+        jm_perf_subsamp, jm_heartbeat_interval, jm_jobid
 
     def as_int(v):
         if v == None:
@@ -76,6 +84,9 @@ def parse_global_config(argdict):
     jm_recv_backoff = as_float(argdict.get('rbackoff', config.recv_backoff))
     jm_send_backoff = as_float(argdict.get('sbackoff', config.send_backoff))
     jm_memstat = as_int(argdict.get('memstat', 0))
+    jm_profiling = as_int(argdict.get('profiling', 0))
+    jm_perf_rinterv = as_int(argdict.get('rinterv', 60))
+    jm_perf_subsamp = as_int(argdict.get('subsamp', 12))
     jm_heartbeat_interval = as_float(argdict.get('heartbeat-interval', 10))
     jm_jobid = argdict.get('jobid', '')
 
@@ -235,7 +246,16 @@ def setup_endpoint_for_pushing(e):
     try:
         # Try to connect to a task manager
         e.Open(jm_conn_timeout)
-
+    except:
+        # Problem connecting to the task manager
+        # Because this is a connection event, 
+        # make it a debug rather than a warning
+        logging.debug('Error connecting to task manager at %s:%d!',
+            e.address, e.port)
+        log_lines(traceback.format_exc(), logging.debug)
+        e.Close()
+        return
+    try:
         # Send the job identifier
         e.WriteString(jm_jobid)
 
@@ -271,7 +291,7 @@ def setup_endpoint_for_pushing(e):
         # Problem connecting to the task manager
         logging.warning('Error connecting to task manager at %s:%d!',
             e.address, e.port)
-        traceback.print_exc()
+        log_lines(traceback.format_exc(), logging.debug)
 
     e.Close()
     return False
@@ -283,7 +303,16 @@ def setup_endpoint_for_pulling(e):
     try:
         # Try to connect to a task manager
         e.Open(jm_conn_timeout)
-
+    except:
+        # Problem connecting to the task manager
+        # Because this is a connection event, 
+        # make it a debug rather than a warning
+        logging.debug('Error connecting to task manager at %s:%d!',
+            e.address, e.port)
+        log_lines(traceback.format_exc(), logging.debug)
+        e.Close()
+        return
+    try:
         # Send the job identifier
         e.WriteString(jm_jobid)
 
@@ -305,7 +334,7 @@ def setup_endpoint_for_pulling(e):
         # Problem connecting to the task manager
         logging.warning('Error connecting to task manager at %s:%d!',
             e.address, e.port)
-        traceback.print_exc()
+        log_lines(traceback.format_exc(), logging.debug)
 
     e.Close()
     return False
@@ -313,11 +342,17 @@ def setup_endpoint_for_pulling(e):
 ###############################################################################
 # Push tasks while the task manager is not full
 ###############################################################################
-def push_tasks(job, runid, jm, tm, taskid, task, tasklist):
+def push_tasks(job, runid, jm, tm, taskid, task, tasklist, completed):
     # Keep pushing until finished or the task manager is full
     sent = []
     while True:
         if task == None:
+
+            # Avoid calling next_task after it's finished
+            if completed:
+                logging.debug('There are no new tasks to generate.')
+                return (True, 0, None, sent)
+
             # Only get a task if the last one was already sent
             newtaskid = taskid + 1
             r1, newtask, ctx = job.spits_job_manager_next_task(jm, newtaskid)
@@ -386,7 +421,7 @@ def push_tasks(job, runid, jm, tm, taskid, task, tasklist):
             # Something went wrong with the connection,
             # try with another task manager
             logging.error('Error pushing tasks to task manager!')
-            traceback.print_exc()
+            log_lines(traceback.format_exc(), logging.debug)
             break
 
     return (False, taskid, task, sent)
@@ -535,7 +570,16 @@ def heartbeat(finished):
         else:
             try:
                 tm.Open(jm_heart_timeout)
-
+            except:
+                # Problem connecting to the task manager
+                # Because this is a connection event, 
+                # make it a debug rather than a warning
+                logging.debug('Error connecting to task manager at %s:%d!',
+                    tm.address, tm.port)
+                log_lines(traceback.format_exc(), logging.debug)
+                tm.Close()
+                continue
+            try:
                 # Send the job identifier
                 tm.WriteString(jm_jobid)
 
@@ -553,7 +597,7 @@ def heartbeat(finished):
             except:
                 logging.warning('Error connecting to task manager at %s:%d!',
                     tm.address, tm.port)
-                traceback.print_exc()
+                log_lines(traceback.format_exc(), logging.debug)
             finally:
                 tm.Close()
 
@@ -596,23 +640,23 @@ def jobmanager(argv, job, runid, jm, tasklist, completed):
             # Open the connection to the task manager and query if it is
             # possible to send data
             if not setup_endpoint_for_pushing(tm):
-                continue
+                finished = False
+            else:
+                logging.debug('Pushing tasks to %s:%d...', tm.address, tm.port)
 
-            logging.debug('Pushing tasks to %s:%d...', tm.address, tm.port)
+                # Task pushing loop
+                memstat.stats()
+                finished, taskid, task, sent = push_tasks(job, runid, jm, 
+                    tm, taskid, task, tasklist, completed[0] == 1)
 
-            # Task pushing loop
-            memstat.stats()
-            finished, taskid, task, sent = push_tasks(job, runid, jm, tm,
-                taskid, task, tasklist)
+                # Add the sent tasks to the sumission list
+                submissions = submissions + sent
 
-            # Add the sent tasks to the sumission list
-            submissions = submissions + sent
+                # Close the connection with the task manager
+                tm.Close()
 
-            # Close the connection with the task manager
-            tm.Close()
-
-            logging.debug('Finished pushing tasks to %s:%d.',
-                tm.address, tm.port)
+                logging.debug('Finished pushing tasks to %s:%d.',
+                    tm.address, tm.port)
 
             if finished and completed[0] == 0:
                 # Tell everyone the task generation was completed
@@ -621,6 +665,7 @@ def jobmanager(argv, job, runid, jm, tasklist, completed):
 
             # Exit the job manager when done
             if len(tasklist) == 0 and completed[0] == 1:
+                logging.debug('Job manager exiting...')
                 return
 
             # Keep sending the uncommitted tasks
@@ -688,6 +733,7 @@ def committer(argv, job, runid, co, tasklist, completed):
 
             if len(tasklist) == 0 and completed[0] == 1:
                 logging.info('All tasks committed.')
+                logging.debug('Committer exiting...')
                 return
 
         # Refresh the tasklist
@@ -723,7 +769,7 @@ def killtms():
             # Problem connecting to the task manager
             logging.warning('Error connecting to task manager at %s:%d!',
                 tm.address, tm.port)
-            traceback.print_exc()
+            log_lines(traceback.format_exc(), logging.debug)
 
 ###############################################################################
 # Run routine
@@ -805,6 +851,10 @@ def main(argv):
     if jm_memstat == 1:
         memstat.enable()
     memstat.stats()
+
+    # Enable perf module
+    if jm_profiling:
+        PerfModule(make_uid(), 0, jm_perf_rinterv, jm_perf_subsamp)
 
     # Load the module
     module = args.margs[0]

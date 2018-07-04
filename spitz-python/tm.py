@@ -26,6 +26,10 @@ from libspitz import JobBinary, SimpleEndpoint
 from libspitz import Listener, TaskPool
 from libspitz import messaging, config
 from libspitz import timeout as Timeout
+from libspitz import make_uid
+from libspitz import log_lines
+
+from libspitz import PerfModule
 
 import Args
 import sys, os, socket, datetime, logging, multiprocessing, struct, time, traceback
@@ -50,6 +54,9 @@ tm_conn_timeout = None # Socket connect timeout
 tm_recv_timeout = None # Socket receive timeout
 tm_send_timeout = None # Socket send timeout
 tm_timeout = None
+tm_profiling = None # 1 to enable profiling
+tm_perf_rinterv = None # Profiling report interval (seconds)
+tm_perf_subsamp = None # Number of samples collected between report intervals
 tm_jobid = None
 
 ###############################################################################
@@ -58,7 +65,8 @@ tm_jobid = None
 def parse_global_config(argdict):
     global tm_mode, tm_addr, tm_port, tm_nw, tm_log_file, tm_verbosity, \
         tm_overfill, tm_announce, tm_conn_timeout, tm_recv_timeout, \
-        tm_send_timeout, tm_timeout, tm_jobid
+        tm_send_timeout, tm_timeout, tm_profiling, tm_perf_rinterv, \
+        tm_perf_subsamp, tm_jobid
 
     def as_int(v):
         if v == None:
@@ -84,6 +92,9 @@ def parse_global_config(argdict):
     tm_recv_timeout = as_float(argdict.get('rtimeout', config.recv_timeout))
     tm_send_timeout = as_float(argdict.get('stimeout', config.send_timeout))
     tm_timeout = as_float(argdict.get('timeout', config.timeout))
+    tm_profiling = as_int(argdict.get('profiling', 0))
+    tm_perf_rinterv = as_int(argdict.get('rinterv', 60))
+    tm_perf_subsamp = as_int(argdict.get('subsamp', 12))
     tm_jobid = argdict.get('jobid', '')
 
 ###############################################################################
@@ -141,13 +152,8 @@ def announce_file(addr, dirname = None):
             pass
 
     # Create a unique filename for the process
-    pid = os.getpid()
-    hostname = socket.gethostname()
-    hostname = [c for c in hostname if c == ' ' or c == '-' or 
-        (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or 
-        (c >= '0' and c <= '9')]
-    hostname = ''.join(hostname)
-    filename = os.path.join('.', dirname, '%s-%s' % (hostname, pid))
+    uid = make_uid()
+    filename = os.path.join('.', dirname, uid)
 
     logging.debug('Adding node %s to directory %s...' % 
         (addr, dirname))
@@ -157,7 +163,7 @@ def announce_file(addr, dirname = None):
         f.write("node %s\n" % addr)
         f.close()
     except:
-        logging.warning('Failed to write to %s!' % (nodefile,))
+        logging.warning('Failed to write to %s!' % (filename,))
 
 ###############################################################################
 # Server callback
@@ -174,7 +180,7 @@ def server_callback(conn, addr, port, job, tpool, cqueue, timeout):
 
         if tm_jobid != jobid:
             logging.error('Job Id mismatch from %s:%d! Self: %s, task manager: %s!',
-                conn.address, conn.port, jm_jobid, jobid)
+                conn.address, conn.port, tm_jobid, jobid)
             conn.Close()
             return False
 
@@ -276,7 +282,7 @@ def server_callback(conn, addr, port, job, tpool, cqueue, timeout):
     except:
         logging.warning('Error occurred while reading request from %s:%d!',
             addr, port)
-        traceback.print_exc()
+        log_lines(traceback.format_exc(), logging.debug)
 
     conn.Close()
     logging.debug('Connection to %s:%d closed.', addr, port)
@@ -351,6 +357,9 @@ class App(object):
 
     def run(self):
         argv = self.args.margs
+        # Enable perf module
+        if tm_profiling:
+            PerfModule(make_uid(), tm_nw, tm_perf_rinterv, tm_perf_subsamp)
         self.timeout.reset()
         logging.info('Starting workers...')
         self.tpool.start()

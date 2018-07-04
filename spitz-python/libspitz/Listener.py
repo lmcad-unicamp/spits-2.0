@@ -24,6 +24,7 @@
 
 from libspitz import ClientEndpoint
 from libspitz import config
+from libspitz import log_lines
 
 import socket, threading, time, logging, os, traceback, sys
 
@@ -76,9 +77,8 @@ class Listener(object):
                 threading.Thread(target = self.callback,
                     args=((endpoint, addr, port) + self.user_args)).start()
             except:
-                print(sys.exc_info())
-                traceback.print_exc()
-                logging.debug('O oh!')
+                log_lines(sys.exc_info(), logging.debug)
+                log_lines(traceback.format_exc(), logging.debug)
                 time.sleep(10)
 
     def Start(self):

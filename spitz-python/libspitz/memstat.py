@@ -1,3 +1,5 @@
+from libspitz import log_lines
+
 import logging
 import sys
 import traceback
@@ -66,8 +68,8 @@ def stats():
         logging.info('memstat:%s:%d: rss_kb: %d gb_stages: %d %d %d' % \
                      (fname, fnum, kb, s0, s1, s2))
     except:
-        print(sys.exc_info())
-        traceback.print_exc()
+        log_lines(sys.exc_info(), logging.debug)
+        log_lines(traceback.format_exc(), logging.debug)
         logging.warning('something went wrong with memstat, disabling')
         _can_enable = False
         _memstat_enabled = False

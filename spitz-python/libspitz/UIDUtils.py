@@ -2,7 +2,7 @@
 
 # The MIT License (MIT)
 #
-# Copyright (c) 2015 Caian Benedicto <caian@ggaunicamp.com>
+# Copyright (c) 2018 Caian Benedicto <caian@ggaunicamp.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy 
 # of this software and associated documentation files (the "Software"), to 
@@ -22,22 +22,13 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS 
 # IN THE SOFTWARE.
 
-from .LogUtils import *
+import os, socket
 
-from .JobBinary import JobBinary
-
-from .Endpoint import Endpoint
-from .SimpleEndpoint import SimpleEndpoint
-from .ClientEndpoint import ClientEndpoint
-
-from .Listener import Listener
-from .TaskPool import TaskPool
-from .Timeout import timeout
-from .PerfModule import PerfModule
-from .UIDUtils import make_uid
-
-def main():
-    pass
-
-if __name__ == '__main__':
-    main()
+def make_uid():
+    pid = os.getpid()
+    hostname = socket.gethostname()
+    hostname = [c for c in hostname if c == ' ' or c == '-' or 
+        (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or 
+        (c >= '0' and c <= '9')]
+    hostname = ''.join(hostname)
+    return '%s-%s' % (hostname, pid)
