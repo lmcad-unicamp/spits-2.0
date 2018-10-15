@@ -1,0 +1,46 @@
+dist: trusty
+sudo: false
+language: cpp
+
+addons:
+  apt:
+    sources:
+      - ubuntu-toolchain-r-test
+    packages:
+      - g++-6
+      - git
+
+before_install:
+  # Get the tools used to generate and upload coverage results to coveralls
+  - pip install --user coverage coveralls
+
+script:
+  # Save some directories
+  - export PROJECT_DIR="$PWD"
+  - export PROJECT_EXAMPLES_DIR="$PROJECT_DIR/examples"
+  - export BUILD_DIR="$PROJECT_DIR/build"
+  - export SPITZ_RUNTIME_DIR="$PROJECT_DIR/spitz-python"
+  - export SPITZ_RUN="$SPITZ_RUNTIME_DIR/spitz-run.sh"
+  # Override the python used by spitz
+  - export PYTHONCMD="coverage run --parallel-mode --branch --source=$SPITZ_RUNTIME_DIR"
+  # Print some information
+  - echo "Current dir is $PWD"
+  # Set compiler
+  - export CXX=/usr/bin/g++-6
+  # Set compiler flags
+  - export CXXFLAGS="-I$PROJECT_DIR/spitz-include/ccpp/"
+  # Set linker flags
+  - export LDFLAGS="-fPIC -shared"
+  # Create the build directory
+  - mkdir -p "$BUILD_DIR" && pushd "$BUILD_DIR"
+  # Use the spitz-pi-2 example as a test
+  - mkdir -p "spitz-pi-2" && pushd "spitz-pi-2"
+  - $CXX $CXXFLAGS "$PROJECT_EXAMPLES_DIR/spitz-pi-2/main.cpp" -o test-module $LDFLAGS
+  - $SPITZ_RUN test-module 1000
+  - popd
+  - popd
+
+after_success:
+  # Combine the coverage results and upload to coveralls
+  - coverage combine "$BUILD_DIR/spitz-pi-2/"
+  - coveralls
