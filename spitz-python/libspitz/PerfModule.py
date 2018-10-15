@@ -22,9 +22,10 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS 
 # IN THE SOFTWARE.
 
-import os, time, timeit, threading, logging, datetime
-
+from .LogUtils import log_lines
 from .pynvml import *
+
+import os, time, timeit, threading, logging, datetime, traceback
 
 class PerfModule():
     """
@@ -106,6 +107,7 @@ class PerfModule():
             nvmlInit()
         except:
             logging.error('PerfModule: Could not initialize NVML!')
+            log_lines(traceback.format_exc(), logging.debug)
             return
 
         # List the GPUs in the system
@@ -115,6 +117,7 @@ class PerfModule():
             ngpus = nvmlDeviceGetCount()
         except:
             logging.error('PerfModule: Could not enumerate GPU devices!')
+            log_lines(traceback.format_exc(), logging.debug)
 
         # Start the NVML threads
 
@@ -123,6 +126,7 @@ class PerfModule():
                 handle = nvmlDeviceGetHandleByIndex(i)
             except:
                 logging.error('PerfModule: Failed to access GPU %d!' % i)
+                log_lines(traceback.format_exc(), logging.debug)
                 continue
 
             def runnv_wrapper():
@@ -232,7 +236,8 @@ class PerfModule():
         Return:
 
           A tuple with the utilization, temperature, sm clock, memory clock, 
-          total used memory and used memory by the specified PID.
+          total used memory, used memory by the specified PID, power
+          consumption and throttling reasons.
 
         Note:
 
@@ -278,7 +283,17 @@ class PerfModule():
         except:
             pass
 
-        return (ut, mut, temp, smclk, memclk, mem, pmem)
+        try:
+            throttle = nvmlDeviceGetCurrentClocksThrottleReasons(handle)
+        except:
+            throttle = error
+
+        try:
+            power = nvmlDeviceGetPowerUsage(handle) / 1000.0
+        except:
+            power = error
+
+        return (ut, mut, temp, smclk, memclk, mem, pmem, power, throttle)
             
 
     def RunCPU(self):
@@ -478,25 +493,51 @@ class PerfModule():
 
         try:
             name = nvmlDeviceGetName(handle).decode('utf8')
-            brand = nvmlDeviceGetBrand(handle)
-            brandNames = {
-                NVML_BRAND_UNKNOWN : "Unknown",
-                NVML_BRAND_QUADRO  : "Quadro",
-                NVML_BRAND_TESLA   : "Tesla",
-                NVML_BRAND_NVS     : "NVS",
-                NVML_BRAND_GRID    : "Grid",
-                NVML_BRAND_GEFORCE : "GeForce",
-            }
-            fullname = '%s %s' % (brandNames[brand], name)
         except:
-            logging.error('PerfModule: Could not access GPU information!')
-            return
+            name = "Unknown"
+            logging.error('PerfModule: Could not access GPU name!')
+            log_lines(traceback.format_exc(), logging.debug)
+
+        try:
+            brand = nvmlDeviceGetBrand(handle)
+        except:
+            brand = NVML_BRAND_UNKNOWN
+            logging.error('PerfModule: Could not access GPU brand!')
+            log_lines(traceback.format_exc(), logging.debug)
+
+        brandNames = {
+            NVML_BRAND_UNKNOWN : "Unknown",
+            NVML_BRAND_QUADRO  : "Quadro",
+            NVML_BRAND_TESLA   : "Tesla",
+            NVML_BRAND_NVS     : "NVS",
+            NVML_BRAND_GRID    : "Grid",
+            NVML_BRAND_GEFORCE : "GeForce",
+        }
+
+        fullname = '%s %s' % (brandNames[brand], name)
+
+        try:
+            vdriver = nvmlSystemGetDriverVersion().decode('utf8')
+        except:
+            vdriver = 'N/A'
 
         try:
             meminfo = nvmlDeviceGetMemoryInfo(handle)
             memtotal = str(meminfo.total / 1024 / 1024) + ' MiB'
         except:
             memtotal = 'N/A'
+
+        try:
+            meminfo = nvmlDeviceGetMemoryInfo(handle)
+            memtotal = str(meminfo.total / 1024 / 1024) + ' MiB'
+        except:
+            memtotal = 'N/A'
+
+        try:
+            powerlim = nvmlDeviceGetPowerManagementLimit(handle)
+            powerlim = str(powerlim / 1000.0) + ' W'
+        except:
+            powerlim = 'N/A'
 
         # Get the process PID
 
@@ -541,13 +582,21 @@ class PerfModule():
             maxpmem = 0
             avgpmem = 0
 
+            minpower = 0
+            maxpower = 0
+            avgpower = 0
+
+            throtbits = 0
+
             n = 0
 
             gpuheader = """# (1) Total wall time (since beginning of PerfModule) [us]
 # (2-4) Utilization (min, max, avg) [%]
 # (5-7) Temperature (min, max, avg) [oC]
 # (8-10) SM Clock (min, max, avg) [MHz]
-# (11-13) Memory Clock (min, max, avg) [MHz]"""
+# (11-13) Memory Clock (min, max, avg) [MHz]
+# (14-16) Power Consumption (min, max, avg) [W]
+# (17) Throttling Reason (accumulated during period)"""
 
             memheader = """# (1) Total wall time (since beginning of PerfModule) [us]
 # (2-4) Total used memory (min, max, avg) [MiB]
@@ -562,7 +611,8 @@ class PerfModule():
                 try:
 
                     wt = timeit.default_timer()
-                    ut, mut, temp, smclk, memclk, mem, pmem = self.NVStat(handle, pid)
+                    ut, mut, temp, smclk, memclk, mem, pmem, power, \
+                        throttle = self.NVStat(handle, pid)
 
                     if refwtime == 0:
 
@@ -572,7 +622,8 @@ class PerfModule():
                         refstamp = datetime.datetime.utcnow()
                         cpuheader = '# ' + \
                             refstamp.strftime('%Y-%m-%d %H:%M:%S.%f') + \
-                            '\n# ' + fullname + '\n' + gpuheader
+                            '\n# ' + fullname + '\n# Driver version: ' + vdriver + \
+                            '\n# Power limit: ' + powerlim + ' [W]\n' + gpuheader
                         memheader = '# ' + \
                             refstamp.strftime('%Y-%m-%d %H:%M:%S.%f') + \
                             '\n# ' + fullname + '\n# ' + memtotal + '\n' + memheader
@@ -588,6 +639,9 @@ class PerfModule():
                         avgmemclk += memclk
                         avgmem += mem
                         avgpmem += pmem
+                        avgpower += power
+
+                        throtbits = throtbits | throttle
 
                         if n == 0:
                             minut = ut
@@ -604,6 +658,8 @@ class PerfModule():
                             maxmem = mem
                             minpmem = pmem
                             maxpmem = pmem
+                            minpower = power
+                            maxpower = power
                         else:
                             minut = min(minut, ut)
                             maxut = max(maxut, ut)
@@ -619,6 +675,8 @@ class PerfModule():
                             maxmem = max(maxmem, mem)
                             minpmem = min(minpmem, pmem)
                             maxpmem = max(maxpmem, pmem)
+                            minpower = min(minpower, power)
+                            maxpower = max(maxpower, power)
 
                         n += 1
 
@@ -643,6 +701,7 @@ class PerfModule():
             avgmemclk /= float(n)
             avgmem /= float(n)
             avgpmem /= float(n)
+            avgpower /= float(n)
 
             minut = minut if minut >= 0 else 'N/A'
             minmut = minmut if minmut >= 0 else 'N/A'
@@ -651,6 +710,7 @@ class PerfModule():
             minmemclk = minmemclk if minmemclk >= 0 else 'N/A'
             minmem = minmem if minmem >= 0 else 'N/A'
             minpmem = minpmem if minpmem >= 0 else 'N/A'
+            minpower = minpower if minpower >= 0 else 'N/A'
 
             maxut = maxut if maxut >= 0 else 'N/A'
             maxmut = maxmut if maxmut >= 0 else 'N/A'
@@ -659,6 +719,7 @@ class PerfModule():
             maxmemclk = maxmemclk if maxmemclk >= 0 else 'N/A'
             maxmem = maxmem if maxmem >= 0 else 'N/A'
             maxpmem = maxpmem if maxpmem >= 0 else 'N/A'
+            maxpower = maxpower if maxpower >= 0 else 'N/A'
 
             avgut = avgut if avgut >= 0 else 'N/A'
             avgmut = avgmut if avgmut >= 0 else 'N/A'
@@ -667,11 +728,13 @@ class PerfModule():
             avgmemclk = avgmemclk if avgmemclk >= 0 else 'N/A'
             avgmem = avgmem if avgmem >= 0 else 'N/A'
             avgpmem = avgpmem if avgpmem >= 0 else 'N/A'
+            avgpower = avgpower if avgpower >= 0 else 'N/A'
 
             if not self.stop:
                 self.Dump(cpuheader, [wtime, minut, maxut, avgut, 
                     mintemp, maxtemp, avgtemp, minsmclk, maxsmclk, avgsmclk, 
-                    minmemclk, maxmemclk, avgmemclk], 
+                    minmemclk, maxmemclk, avgmemclk, minpower, maxpower,
+                    avgpower, throtbits],
                     'gpu-%d' % igpu, isnew)
                 self.Dump(memheader, [wtime, minmem, maxmem, avgmem, minpmem, 
                     maxpmem, avgpmem, minmut, maxmut, avgmut], 
