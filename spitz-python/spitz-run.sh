@@ -58,7 +58,9 @@ MODULEARGS="${@:2}"
 
 JMPATH="$SPITZDIR/jm.py"
 TMPATH="$SPITZDIR/tm.py"
-PYTHONCMD="python -u"
+PYTHON="${PYTHON:-$(which python3)}"
+PYTHON="${PYTHON:-$(which python)}"
+PYTHONCMD="${PYTHONCMD:-$PYTHON -u}"
 
 ###############################################################################
 # Generate a unique name to be used for the logs
