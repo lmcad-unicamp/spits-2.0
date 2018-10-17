@@ -12,7 +12,7 @@ addons:
 
 before_install:
   # Get the tools used to generate and upload coverage results to coveralls
-  - pip install --user coverage coveralls
+  - pip install --user coverage codecov
 
 script:
   # Save some directories
@@ -43,4 +43,4 @@ script:
 after_success:
   # Combine the coverage results and upload to coveralls
   - coverage combine "$BUILD_DIR/spitz-pi-2/"
-  - coveralls
+  - codecov
