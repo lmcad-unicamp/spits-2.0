@@ -4,22 +4,22 @@
 #
 # Copyright (c) 2015 Caian Benedicto <caian@ggaunicamp.com>
 #
-# Permission is hereby granted, free of charge, to any person obtaining a copy 
-# of this software and associated documentation files (the "Software"), to 
-# deal in the Software without restriction, including without limitation the 
-# rights to use, copy, modify, merge, publish, distribute, sublicense, 
-# and/or sell copies of the Software, and to permit persons to whom the 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to
+# deal in the Software without restriction, including without limitation the
+# rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
 # Software is furnished to do so, subject to the following conditions:
-# 
-# The above copyright notice and this permission notice shall be included in 
+#
+# The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the Software.
-# 
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL 
-# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
-# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS 
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 # IN THE SOFTWARE.
 
 from libspitz import JobBinary, SimpleEndpoint
@@ -31,7 +31,7 @@ from libspitz import log_lines
 from libspitz import PerfModule
 
 import Args
-import sys, threading, os, time, ctypes, logging, struct, threading, traceback
+import sys, threading, os, time, logging, struct, traceback
 
 # Global configuration parameters
 jm_killtms = None # Kill task managers after execution
@@ -213,7 +213,7 @@ def load_tm_list_from_dir(dirname = None):
         dirname = 'nodes'
 
     logging.debug('Loading task manager list from %s...' % (dirname,))
-    
+
     tms = {}
 
     # Read all files
@@ -224,7 +224,7 @@ def load_tm_list_from_dir(dirname = None):
                 continue
             tms.update(load_tm_list_from_file(f))
     except:
-        logging.warning('Error loading the list of task ' + 
+        logging.warning('Error loading the list of task ' +
             'managers from directory!')
         return {}
 
@@ -248,7 +248,7 @@ def setup_endpoint_for_pushing(e):
         e.Open(jm_conn_timeout)
     except:
         # Problem connecting to the task manager
-        # Because this is a connection event, 
+        # Because this is a connection event,
         # make it a debug rather than a warning
         logging.debug('Error connecting to task manager at %s:%d!',
             e.address, e.port)
@@ -305,7 +305,7 @@ def setup_endpoint_for_pulling(e):
         e.Open(jm_conn_timeout)
     except:
         # Problem connecting to the task manager
-        # Because this is a connection event, 
+        # Because this is a connection event,
         # make it a debug rather than a warning
         logging.debug('Error connecting to task manager at %s:%d!',
             e.address, e.port)
@@ -356,17 +356,17 @@ def push_tasks(job, runid, jm, tm, taskid, task, tasklist, completed):
             # Only get a task if the last one was already sent
             newtaskid = taskid + 1
             r1, newtask, ctx = job.spits_job_manager_next_task(jm, newtaskid)
-            
+
             # Exit if done
             if r1 == 0:
                 return (True, 0, None, sent)
-            
+
             if newtask == None:
                 logging.error('Task %d was not pushed!', newtaskid)
                 return (False, taskid, task, sent)
 
             if ctx != newtaskid:
-                logging.error('Context verification failed for task %d!', 
+                logging.error('Context verification failed for task %d!',
                     newtaskid)
                 return (False, taskid, task, sent)
 
@@ -375,7 +375,7 @@ def push_tasks(job, runid, jm, tm, taskid, task, tasklist, completed):
             task = newtask[0]
             tasklist[taskid] = (0, task)
 
-            logging.debug('Generated task %d with payload size of %d bytes.', 
+            logging.debug('Generated task %d with payload size of %d bytes.',
                 taskid, len(task) if task != None else 0)
 
         try:
@@ -465,12 +465,12 @@ def commit_tasks(job, runid, co, tm, tasklist, completed):
                         'worker returned %d!', taskid, r)
 
             if taskrunid < runid:
-                logging.debug('The task %d is from the previous run %d ' + 
+                logging.debug('The task %d is from the previous run %d ' +
                     'and will be ignored!', taskid, taskrunid)
                 continue
 
             if taskrunid > runid:
-                logging.error('Received task %d from a future run %d!', 
+                logging.error('Received task %d from a future run %d!',
                     taskid, taskrunid)
                 continue
 
@@ -572,7 +572,7 @@ def heartbeat(finished):
                 tm.Open(jm_heart_timeout)
             except:
                 # Problem connecting to the task manager
-                # Because this is a connection event, 
+                # Because this is a connection event,
                 # make it a debug rather than a warning
                 logging.debug('Error connecting to task manager at %s:%d!',
                     tm.address, tm.port)
@@ -646,7 +646,7 @@ def jobmanager(argv, job, runid, jm, tasklist, completed):
 
                 # Task pushing loop
                 memstat.stats()
-                finished, taskid, task, sent = push_tasks(job, runid, jm, 
+                finished, taskid, task, sent = push_tasks(job, runid, jm,
                     tm, taskid, task, tasklist, completed[0] == 1)
 
                 # Add the sent tasks to the sumission list

@@ -2,7 +2,7 @@
 
 # The MIT License (MIT)
 #
-# Copyright (c) 2015 Caian Benedicto <caian@ggaunicamp.com>
+# Copyright (c) 2018 Caian Benedicto <caian@ggaunicamp.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to
@@ -22,24 +22,15 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 # IN THE SOFTWARE.
 
-from .LogUtils import *
+import ctypes
 
-from .Blob import Blob
-from .Pointer import Pointer
-from .JobBinary import JobBinary
+class Pointer(object):
+    """Class encapsulating a pointer to a region of memory"""
 
-from .Endpoint import Endpoint
-from .SimpleEndpoint import SimpleEndpoint
-from .ClientEndpoint import ClientEndpoint
+    def __init__(self, data_pointer=None):
+        """Construct a new object given a pointer to the data."""
+        self._data_pointer = ctypes.c_void_p(data_pointer)
 
-from .Listener import Listener
-from .TaskPool import TaskPool
-from .Timeout import timeout
-from .PerfModule import PerfModule
-from .UIDUtils import make_uid
-
-def main():
-    pass
-
-if __name__ == '__main__':
-    main()
+    def get_value(self):
+        """Get the pointer to the stored data."""
+        return self._data_pointer
