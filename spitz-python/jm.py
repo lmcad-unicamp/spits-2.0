@@ -31,7 +31,7 @@ from libspitz import log_lines
 from libspitz import PerfModule
 
 import Args
-import sys, threading, os, time, ctypes, logging, struct, threading, traceback
+import sys, threading, os, time, logging, struct, traceback
 
 # Global configuration parameters
 jm_killtms = None # Kill task managers after execution
