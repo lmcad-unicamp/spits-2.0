@@ -106,7 +106,7 @@ class PerfModule():
         try:
             nvmlInit()
         except:
-            logging.error('PerfModule: Could not initialize NVML!')
+            logging.info('PerfModule: Could not initialize NVML!')
             try:
                 _, error, _ = sys.exc_info()
                 log_lines(str(error), logging.debug)
@@ -121,7 +121,7 @@ class PerfModule():
             ngpus = 0
             ngpus = nvmlDeviceGetCount()
         except:
-            logging.error('PerfModule: Could not enumerate GPU devices!')
+            logging.info('PerfModule: Could not enumerate GPU devices!')
             try:
                 _, error, _ = sys.exc_info()
                 log_lines(str(error), logging.debug)
@@ -135,7 +135,7 @@ class PerfModule():
             try:
                 handle = nvmlDeviceGetHandleByIndex(i)
             except:
-                logging.error('PerfModule: Failed to access GPU %d!' % i)
+                logging.info('PerfModule: Failed to access GPU %d!' % i)
                 try:
                     _, error, _ = sys.exc_info()
                     log_lines(str(error), logging.debug)
@@ -332,7 +332,7 @@ class PerfModule():
                 pass
 
         if pagesize == 0:
-            logging.error('PerfModule: Could not determine page size!')
+            logging.info('PerfModule: Could not determine page size!')
             return
 
         logging.debug('PerfModule: Page size is %d bytes.' % pagesize)
@@ -342,7 +342,7 @@ class PerfModule():
         try:
             ticpersec = os.sysconf(os.sysconf_names['SC_CLK_TCK'])
         except:
-            logging.error('PerfModule: Could not determine tick frequency!')
+            logging.info('PerfModule: Could not determine tick frequency!')
             return
 
         logging.debug('PerfModule: Tick frequency is %d Hz.' % ticpersec)
@@ -510,7 +510,7 @@ class PerfModule():
             name = nvmlDeviceGetName(handle).decode('utf8')
         except:
             name = "Unknown"
-            logging.error('PerfModule: Could not access GPU name!')
+            logging.info('PerfModule: Could not access GPU name!')
             try:
                 _, error, _ = sys.exc_info()
                 log_lines(str(error), logging.debug)
@@ -522,7 +522,7 @@ class PerfModule():
             brand = nvmlDeviceGetBrand(handle)
         except:
             brand = NVML_BRAND_UNKNOWN
-            logging.error('PerfModule: Could not access GPU brand!')
+            logging.info('PerfModule: Could not access GPU brand!')
             try:
                 _, error, _ = sys.exc_info()
                 log_lines(str(error), logging.debug)
