@@ -4,22 +4,22 @@
 #
 # Copyright (c) 2017 Caian Benedicto <caian@ggaunicamp.com>
 #
-# Permission is hereby granted, free of charge, to any person obtaining a copy 
-# of this software and associated documentation files (the "Software"), to 
-# deal in the Software without restriction, including without limitation the 
-# rights to use, copy, modify, merge, publish, distribute, sublicense, 
-# and/or sell copies of the Software, and to permit persons to whom the 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to
+# deal in the Software without restriction, including without limitation the
+# rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
 # Software is furnished to do so, subject to the following conditions:
-# 
-# The above copyright notice and this permission notice shall be included in 
+#
+# The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the Software.
-# 
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL 
-# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
-# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS 
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 # IN THE SOFTWARE.
 
 from .LogUtils import log_lines
@@ -30,7 +30,7 @@ import os, time, timeit, threading, logging, datetime, traceback
 class PerfModule():
     """
     Performance statistics acquisition module for PY-PITZ. The statistics
-    are recorded in the SPITZ log, as well as in a file inside ./perf/. The 
+    are recorded in the SPITZ log, as well as in a file inside ./perf/. The
     file is unique for each SPITZ process.
 
     Available statistics:
@@ -49,7 +49,7 @@ class PerfModule():
       - AMD GPU utilization
       - AMD GPU memory
 
-    TODO: 
+    TODO:
       - Windows support
     """
 
@@ -58,8 +58,8 @@ class PerfModule():
         Constructor.
 
         Arguments:
-          
-          uid: The unique ID of the SPITZ process, used when creting the 
+
+          uid: The unique ID of the SPITZ process, used when creting the
           statistics file in ./perf/<UID>-suffix.
 
           nw: The number of compute workers in the CPU, this is printed in
@@ -158,16 +158,16 @@ class PerfModule():
         Print the fields to the perf file.
 
         Arguments:
-          
-          header: The header describing fields, it is only written when 
+
+          header: The header describing fields, it is only written when
           the file is initialized.
 
-          fields: The statistics collected. They will be trivially converted to 
-          string before writing, if any formatting is needed, the field must be 
+          fields: The statistics collected. They will be trivially converted to
+          string before writing, if any formatting is needed, the field must be
           previously formatted and passed as string.
 
-          new: Create a new file (or truncate an existing one) and write the 
-          header before writing the fields if True, otherwise just append 
+          new: Create a new file (or truncate an existing one) and write the
+          header before writing the fields if True, otherwise just append
           fields.
         """
         dirname = './perf/'
@@ -193,7 +193,7 @@ class PerfModule():
         Query /proc/PID/stat.
 
         Arguments:
-          
+
           pid: The target process id.
 
         Return:
@@ -208,7 +208,7 @@ class PerfModule():
         with open('/proc/%d/stat' % pid, 'rt') as f:
             l = f.read()
 
-        # Remove the process name 
+        # Remove the process name
 
         i = l.find('(')
         j = l.rfind(')')
@@ -229,13 +229,13 @@ class PerfModule():
         Query information about a GPU.
 
         Arguments:
-          
+
           pid: The target process id.
           handle: The NVML handle for the device.
 
         Return:
 
-          A tuple with the utilization, temperature, sm clock, memory clock, 
+          A tuple with the utilization, temperature, sm clock, memory clock,
           total used memory, used memory by the specified PID, power
           consumption and throttling reasons.
 
@@ -294,7 +294,7 @@ class PerfModule():
             power = error
 
         return (ut, mut, temp, smclk, memclk, mem, pmem, power, throttle)
-            
+
 
     def RunCPU(self):
         """
@@ -472,8 +472,8 @@ class PerfModule():
             avgtpct = ((ut - firstutime + st - firststime) * 100 / (wt - firstwtime))
 
             if not self.stop:
-                self.Dump(cpuheader, [self.nw, wtime, utime, stime, minupct, 
-                    maxupct, avgupct, minspct, maxspct, avgspct, mintpct, 
+                self.Dump(cpuheader, [self.nw, wtime, utime, stime, minupct,
+                    maxupct, avgupct, minspct, maxspct, avgspct, mintpct,
                     maxtpct, avgtpct], 'cpu', isnew)
                 self.Dump(memheader, [wtime, minrss, maxrss, avgrss], 'cpumem', isnew)
                 isnew = False
@@ -731,13 +731,13 @@ class PerfModule():
             avgpower = avgpower if avgpower >= 0 else 'N/A'
 
             if not self.stop:
-                self.Dump(cpuheader, [wtime, minut, maxut, avgut, 
-                    mintemp, maxtemp, avgtemp, minsmclk, maxsmclk, avgsmclk, 
+                self.Dump(cpuheader, [wtime, minut, maxut, avgut,
+                    mintemp, maxtemp, avgtemp, minsmclk, maxsmclk, avgsmclk,
                     minmemclk, maxmemclk, avgmemclk, minpower, maxpower,
                     avgpower, throtbits],
                     'gpu-%d' % igpu, isnew)
-                self.Dump(memheader, [wtime, minmem, maxmem, avgmem, minpmem, 
-                    maxpmem, avgpmem, minmut, maxmut, avgmut], 
+                self.Dump(memheader, [wtime, minmem, maxmem, avgmem, minpmem,
+                    maxpmem, avgpmem, minmut, maxmut, avgmut],
                     'gpumem-%d' % igpu, isnew)
                 isnew = False
 
