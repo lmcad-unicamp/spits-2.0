@@ -25,7 +25,7 @@
 from .LogUtils import log_lines
 from .pynvml import *
 
-import os, time, timeit, threading, logging, datetime, traceback
+import os, time, timeit, threading, logging, datetime, traceback, sys
 
 class PerfModule():
     """
@@ -107,7 +107,12 @@ class PerfModule():
             nvmlInit()
         except:
             logging.error('PerfModule: Could not initialize NVML!')
-            log_lines(traceback.format_exc(), logging.debug)
+            try:
+                _, error, _ = sys.exc_info()
+                log_lines(str(error), logging.debug)
+                log_lines(traceback.format_exc(), logging.debug)
+            except:
+                logging.debug('Cannot format exception!')
             return
 
         # List the GPUs in the system
@@ -117,7 +122,12 @@ class PerfModule():
             ngpus = nvmlDeviceGetCount()
         except:
             logging.error('PerfModule: Could not enumerate GPU devices!')
-            log_lines(traceback.format_exc(), logging.debug)
+            try:
+                _, error, _ = sys.exc_info()
+                log_lines(str(error), logging.debug)
+                log_lines(traceback.format_exc(), logging.debug)
+            except:
+                logging.debug('Cannot format exception!')
 
         # Start the NVML threads
 
@@ -126,7 +136,12 @@ class PerfModule():
                 handle = nvmlDeviceGetHandleByIndex(i)
             except:
                 logging.error('PerfModule: Failed to access GPU %d!' % i)
-                log_lines(traceback.format_exc(), logging.debug)
+                try:
+                    _, error, _ = sys.exc_info()
+                    log_lines(str(error), logging.debug)
+                    log_lines(traceback.format_exc(), logging.debug)
+                except:
+                    logging.debug('Cannot format exception!')
                 continue
 
             def runnv_wrapper():
@@ -496,14 +511,24 @@ class PerfModule():
         except:
             name = "Unknown"
             logging.error('PerfModule: Could not access GPU name!')
-            log_lines(traceback.format_exc(), logging.debug)
+            try:
+                _, error, _ = sys.exc_info()
+                log_lines(str(error), logging.debug)
+                log_lines(traceback.format_exc(), logging.debug)
+            except:
+                logging.debug('Cannot format exception!')
 
         try:
             brand = nvmlDeviceGetBrand(handle)
         except:
             brand = NVML_BRAND_UNKNOWN
             logging.error('PerfModule: Could not access GPU brand!')
-            log_lines(traceback.format_exc(), logging.debug)
+            try:
+                _, error, _ = sys.exc_info()
+                log_lines(str(error), logging.debug)
+                log_lines(traceback.format_exc(), logging.debug)
+            except:
+                logging.debug('Cannot format exception!')
 
         brandNames = {
             NVML_BRAND_UNKNOWN : "Unknown",
