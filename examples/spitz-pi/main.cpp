@@ -32,7 +32,6 @@
 // #define SPITZ_SERIAL_DEBUG
 
 #include <spitz/spitz.hpp>
-
 #include <iostream>
 #include <string>
 #include <limits>
@@ -42,6 +41,7 @@
 // manager, committer and workers. This can lead to a race condition when
 // each thread tries to initialize the parameters from argc and argv.
 struct parameters
+
 {
     std::string who;
 
@@ -103,7 +103,7 @@ public:
 
         // Serialize and push the task
         task.push(o);
-
+        spits_set_metric_int("PushedTask", i);
         return true;
     }
 
@@ -153,6 +153,7 @@ public:
         result.push(o);
 
         std::cout << "[WK] Processed batch " << batch << "." << std::endl;
+        //spits_set_metric_int("ProcessedBatch", batch);
         return 0;
     }
 };
@@ -185,6 +186,7 @@ public:
             pival += d;
         }
 
+        spits_set_metric_int("CommitedResult", 1);
         return 0;
     }
 
@@ -233,3 +235,4 @@ public:
 
 // Creates a factory class.
 spitz::factory *spitz_factory = new factory();
+spitz::metrics* metrics;

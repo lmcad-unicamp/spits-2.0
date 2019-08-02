@@ -28,11 +28,18 @@
 
 #include "spitz.h"
 #include "stream.hpp"
+#include "metrics.hpp"
 
 #include <iostream>
 
 namespace spitz {
 
+    /**
+     * Push information (data/ostream) to a TM/JM using a callback function
+     *
+     * @param pushf JM/TM Callback function to be called when data is added
+     * @param ctx   Default task context (task id)
+     */
     class pusher
     {
     private:
@@ -45,11 +52,20 @@ namespace spitz {
         {
         }
 
+        /**
+         * Push data to JM/TM via the defined callback
+         * @param p Output stream data
+         */
         void push(const ostream& p) const
         {
             this->pushf(p.data(), p.pos(), this->ctx);
         }
 
+        /**
+         * Push data to JM/TM via the defined callback
+         * @param p Data
+         * @param s Size
+         */
         void push(const void* p, spitssize_t s) const
         {
             this->pushf(p, s, this->ctx);

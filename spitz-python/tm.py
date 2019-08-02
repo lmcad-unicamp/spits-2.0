@@ -1,25 +1,26 @@
+#!/usr/bin/python
 #!/usr/bin/env python
 
 # The MIT License (MIT)
 #
 # Copyright (c) 2015 Caian Benedicto <caian@ggaunicamp.com>
 #
-# Permission is hereby granted, free of charge, to any person obtaining a copy 
-# of this software and associated documentation files (the "Software"), to 
-# deal in the Software without restriction, including without limitation the 
-# rights to use, copy, modify, merge, publish, distribute, sublicense, 
-# and/or sell copies of the Software, and to permit persons to whom the 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to
+# deal in the Software without restriction, including without limitation the
+# rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
 # Software is furnished to do so, subject to the following conditions:
-# 
-# The above copyright notice and this permission notice shall be included in 
+#
+# The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the Software.
-# 
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL 
-# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
-# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS 
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 # IN THE SOFTWARE.
 
 from libspitz import JobBinary, SimpleEndpoint
@@ -32,7 +33,7 @@ from libspitz import log_lines
 from libspitz import PerfModule
 
 import Args
-import sys, os, socket, datetime, logging, multiprocessing, struct, time, traceback
+import sys, os, socket, datetime, logging, multiprocessing, struct, time, traceback, json
 
 from threading import Lock
 
@@ -46,7 +47,7 @@ tm_mode = None # Addressing mode
 tm_addr = None # Bind address
 tm_port = None # Bind port
 tm_nw = None # Maximum number of workers
-tm_overfill = 0 # Extra space in the task queue 
+tm_overfill = 0 # Extra space in the task queue
 tm_announce = None # Mechanism used to broadcast TM address
 tm_log_file = None # Output file for logging
 tm_verbosity = None # Verbosity level for logging
@@ -58,6 +59,7 @@ tm_profiling = None # 1 to enable profiling
 tm_perf_rinterv = None # Profiling report interval (seconds)
 tm_perf_subsamp = None # Number of samples collected between report intervals
 tm_jobid = None
+tm_spitz_profile_buffer_size = None
 
 ###############################################################################
 # Parse global configuration
@@ -66,7 +68,7 @@ def parse_global_config(argdict):
     global tm_mode, tm_addr, tm_port, tm_nw, tm_log_file, tm_verbosity, \
         tm_overfill, tm_announce, tm_conn_timeout, tm_recv_timeout, \
         tm_send_timeout, tm_timeout, tm_profiling, tm_perf_rinterv, \
-        tm_perf_subsamp, tm_jobid
+        tm_perf_subsamp, tm_jobid, tm_spitz_profile_buffer_size
 
     def as_int(v):
         if v == None:
@@ -80,7 +82,7 @@ def parse_global_config(argdict):
 
     tm_mode = argdict.get('tmmode', config.mode_tcp)
     tm_addr = argdict.get('tmaddr', '0.0.0.0')
-    tm_port = int(argdict.get('tmport', config.spitz_tm_port))
+    tm_port = int(argdict.get('tmport', config.def_spitz_tm_port))
     tm_nw = int(argdict.get('nw', multiprocessing.cpu_count()))
     if tm_nw <= 0:
         tm_nw = multiprocessing.cpu_count()
@@ -88,14 +90,15 @@ def parse_global_config(argdict):
     tm_announce = argdict.get('announce', 'none')
     tm_log_file = argdict.get('log', None)
     tm_verbosity = as_int(argdict.get('verbose', logging.INFO // 10)) * 10
-    tm_conn_timeout = as_float(argdict.get('ctimeout', config.conn_timeout))
-    tm_recv_timeout = as_float(argdict.get('rtimeout', config.recv_timeout))
-    tm_send_timeout = as_float(argdict.get('stimeout', config.send_timeout))
-    tm_timeout = as_float(argdict.get('timeout', config.timeout))
+    tm_conn_timeout = as_float(argdict.get('ctimeout', config.def_connection_timeout))
+    tm_recv_timeout = as_float(argdict.get('rtimeout', config.def_receive_timeout))
+    tm_send_timeout = as_float(argdict.get('stimeout', config.def_send_timeout))
+    tm_timeout = as_float(argdict.get('timeout', config.def_idle_timeout))
     tm_profiling = as_int(argdict.get('profiling', 0))
     tm_perf_rinterv = as_int(argdict.get('rinterv', 60))
     tm_perf_subsamp = as_int(argdict.get('subsamp', 12))
     tm_jobid = argdict.get('jobid', '')
+    tm_spitz_profile_buffer_size = as_int(argdict.get('profile-buffer', 100))
 
 ###############################################################################
 # Configure the log output format
@@ -120,7 +123,7 @@ def setup_log():
 def abort(error):
     logging.critical(error)
     exit(1)
-    
+
 ###############################################################################
 # Append the node address to the nodes list
 ###############################################################################
@@ -131,14 +134,14 @@ def announce_cat(addr, filename = None):
         filename = os.path.join('.', nodefile)
 
     logging.debug('Appending node %s to file %s...' % (addr, nodefile))
-    
+
     try:
         f = open(filename, "a")
         f.write("node %s\n" % addr)
         f.close()
     except:
         logging.warning('Failed to write to %s!' % (nodefile,))
-        
+
 ###############################################################################
 # Add the node to a directory as a file
 ###############################################################################
@@ -155,9 +158,9 @@ def announce_file(addr, dirname = None):
     uid = make_uid()
     filename = os.path.join('.', dirname, uid)
 
-    logging.debug('Adding node %s to directory %s...' % 
+    logging.debug('Adding node %s to directory %s...' %
         (addr, dirname))
-    
+
     try:
         f = open(filename, "w")
         f.write("node %s\n" % addr)
@@ -169,7 +172,8 @@ def announce_file(addr, dirname = None):
 # Server callback
 ###############################################################################
 def server_callback(conn, addr, port, job, tpool, cqueue, timeout):
-    logging.debug('Connected to %s:%d.', addr, port)
+    global tm_recv_timeout, tm_send_timeout
+    logging.debug('Connected to {}:{}.'.format(addr, port))
 
     try:
         # Send the job identifier
@@ -179,8 +183,8 @@ def server_callback(conn, addr, port, job, tpool, cqueue, timeout):
         jobid = conn.ReadString(tm_recv_timeout)
 
         if tm_jobid != jobid:
-            logging.error('Job Id mismatch from %s:%d! Self: %s, task manager: %s!',
-                conn.address, conn.port, tm_jobid, jobid)
+            logging.error('Job Id mismatch from {}:{}! Self: {}, task manager: {}!'.format(
+                conn.address, conn.port, tm_jobid, jobid))
             conn.Close()
             return False
 
@@ -190,13 +194,12 @@ def server_callback(conn, addr, port, job, tpool, cqueue, timeout):
 
         # Termination signal
         if mtype == messaging.msg_terminate:
-            logging.info('Received a kill signal from %s:%d.',
-                addr, port)
+            logging.info('Received a kill signal from {}:{}.'.format(addr, port))
             os._exit(0)
 
         # Job manager is sending heartbeats
         if mtype == messaging.msg_send_heart:
-            logging.debug('Received heartbeat from %s:%d', addr, port)
+            logging.debug('Received heartbeat from {}:{}'.format(addr, port))
 
         # Job manager is trying to send tasks to the task manager
         elif mtype == messaging.msg_send_task:
@@ -204,19 +207,18 @@ def server_callback(conn, addr, port, job, tpool, cqueue, timeout):
             while not tpool.Full():
                 # Task pool is not full, start asking for data
                 conn.WriteInt64(messaging.msg_send_more)
+                # Write Data
                 taskid = conn.ReadInt64(tm_recv_timeout)
                 runid = conn.ReadInt64(tm_recv_timeout)
                 tasksz = conn.ReadInt64(tm_recv_timeout)
                 task = conn.Read(tasksz, tm_recv_timeout)
-                logging.info('Received task %d from %s:%d.',
-                    taskid, addr, port)
+                logging.info('Received task {} from {}:{}.'.format(taskid, addr, port))
 
                 # Try enqueue the received task
                 if not tpool.Put(taskid, runid, task):
                     # For some reason the pool got full in between
                     # (shouldn't happen)
-                    logging.warning('Rejecting task %d because ' +
-                        'the pool is ful!', taskid)
+                    logging.warning('Rejecting task %d because the pool is full!', taskid)
                     conn.WriteInt64(messaging.msg_send_rjct)
 
             # Task pool is full, stop receiving tasks
@@ -232,14 +234,13 @@ def server_callback(conn, addr, port, job, tpool, cqueue, timeout):
                     # Pop the task
                     taskid, runid, r, res = cqueue.get_nowait()
 
-                    logging.info('Sending task %d to committer %s:%d...',
-                        taskid, addr, port)
+                    logging.info('Sending task {} to committer {}:{}...'.format(taskid, addr, port))
 
                     # Send the task
                     conn.WriteInt64(taskid)
                     conn.WriteInt64(runid)
                     conn.WriteInt64(r)
-                    if res == None:
+                    if res is None:
                         conn.WriteInt64(0)
                     else:
                         conn.WriteInt64(len(res))
@@ -249,8 +250,7 @@ def server_callback(conn, addr, port, job, tpool, cqueue, timeout):
                     # been received by the other side
                     ans = conn.ReadInt64(messaging.msg_read_result)
                     if ans != messaging.msg_read_result:
-                        logging.warning('Unknown response received from '+
-                            '%s:%d while committing task!', addr, port)
+                        logging.warning('Unknown response received from {}:{} while committing task'.format(addr, port))
                         raise messaging.MessagingError()
 
                     taskid = None
@@ -262,30 +262,67 @@ def server_callback(conn, addr, port, job, tpool, cqueue, timeout):
             except:
                 # Something went wrong while sending, put
                 # the last task back in the queue
-                if taskid != None:
+                if taskid is not None:
                     cqueue.put((taskid, runid, r, res))
-                    logging.info('Task %d put back in the queue.', taskid)
+                    logging.info('Task {} put back in the queue.'.format(taskid))
                 pass
+
+        elif mtype == messaging.msg_cd_query_metrics_list:
+            metrics_list = job.spits_get_metrics_list()
+            metrics_json = {
+                "metrics": [
+                    {
+                        "name": metric[0],
+                        "type": metric[2],
+                        "capacity": metric[1]
+                    } for metric in metrics_list
+                ]
+            }
+            message_json = json.dumps(metrics_json)
+            if message_json is not None:
+                conn.WriteString(message_json)
+
+        elif mtype == messaging.msg_cd_query_metrics_last_values:
+            # Metrics list JSON. Format: {"metrics": ["metric1", "metric2", ...]}
+            metrics_list = conn.ReadString(tm_recv_timeout)
+            metrics_list = json.loads(metrics_list)
+            metrics_last_values = job.spits_get_metrics_last_values(metrics_list['metrics'])
+            metrics_json = {
+                "metrics": [
+                    {
+                        "name": metric_value[0],
+                        "value": metric_value[1],
+                        "sec": metric_value[2],
+                        "nsec": metric_value[3],
+                        "sequence": metric_value[4]
+                    } for metric_value in metrics_last_values
+                ]
+            }
+
+            message_json = json.dumps(metrics_json)
+            if message_json is not None:
+                conn.WriteString(message_json)
+
+        elif mtype == messaging.msg_cd_query_metrics_history:
+            pass
 
         # Unknow message received or a wrong sized packet could be trashing
         # the buffer, don't do anything
         else:
-            logging.warning('Unknown message received \'%d\'!', mtype)
+            logging.warning("Unknown message received '{}'!".format(mtype))
 
     except messaging.SocketClosed:
-        logging.debug('Connection to %s:%d closed from the other side.',
-            addr, port)
+        logging.debug('Connection to {}:{} closed from the other side.'.format(addr, port))
 
     except socket.timeout:
-        logging.warning('Connection to %s:%d timed out!', addr, port)
+        logging.warning('Connection to {}:{} timed out!'.format(addr, port))
 
     except:
-        logging.warning('Error occurred while reading request from %s:%d!',
-            addr, port)
+        logging.warning('Error occurred while reading request from {}:{}!'.format(addr, port))
         log_lines(traceback.format_exc(), logging.debug)
 
     conn.Close()
-    logging.debug('Connection to %s:%d closed.', addr, port)
+    logging.debug('Connection to {}:{} closed.'.format(addr, port))
 
 ###############################################################################
 # Initializer routine for the worker
@@ -356,10 +393,14 @@ class App(object):
                                (self.job, self.tpool, self.cqueue, self.timeout))
 
     def run(self):
+        global tm_spitz_profile_buffer_size
+        self.job.spits_metric_new(tm_spitz_profile_buffer_size)
+        self.job.spits_set_metric_int("created_time", int(time.time()))
         argv = self.args.margs
         # Enable perf module
         if tm_profiling:
             PerfModule(make_uid(), tm_nw, tm_perf_rinterv, tm_perf_subsamp)
+
         self.timeout.reset()
         logging.info('Starting workers...')
         self.tpool.start()
@@ -373,11 +414,12 @@ class App(object):
             announce_file(addr)
         logging.info('Waiting for work...')
         self.server.Join()
+        self.job.spits_metric_finish()
 
     def timeout_exit(self):
         if self.tpool.Empty() and self.active_workers.get() <= 0:
             logging.error('Task Manager exited due to timeout')
-            os._exit(1)
+            sys.exit(1)
             return False
         else:
             return True

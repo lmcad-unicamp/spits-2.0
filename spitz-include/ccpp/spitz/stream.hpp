@@ -128,6 +128,11 @@ namespace spitz {
         {
             return this->pdata.data();
         }
+
+        void clear()
+        {
+            pdata.clear();
+        }
     };
 
     class istream

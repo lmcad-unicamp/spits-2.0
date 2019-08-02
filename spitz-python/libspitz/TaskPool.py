@@ -30,15 +30,31 @@ except:
     import queue # Python 3
 
 class TaskPool(object):
-    """description of class"""
+    '''
+    This class implements a pool of workers to process tasks
+    '''
 
     def __init__(self, max_threads, overfill, initializer, worker, user_args):
+        '''
+        Create and initialize spits workers (threads) to process incoming tasks in the Pool
+
+        :param max_threads: Number of threads to create
+        :type max_threads: int
+        :param overfill: Extra space in the task queue
+        :type overfill: int
+        :param initializer: Initializer routine for the worker
+        :type initializer: method(**kwargs)
+        :param worker: Routine used to execute the task using the job module
+        :type worker: method(**kwargs)
+        :param user_args: User parameters to initializer and worker methods
+        :type user_args: tuple
+        '''
         self.max_threads = max_threads
         self.user_args = user_args
         self.initializer = initializer
         self.worker = worker
         self.tasks = queue.Queue(maxsize=max_threads + overfill)
-        self.threads = [threading.Thread(target=self.runner) for
+        self.threads = [threading.Thread(target=self.runner, name='Worker-{i}'.format(i=i)) for
             i in range(max_threads)]
 
     def start(self):

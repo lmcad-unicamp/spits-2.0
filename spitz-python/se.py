@@ -65,6 +65,7 @@ def run(argv, job):
     wk = job.spits_worker_new(argv)
     taskid = 0
 
+
     while True:
         taskid += 1
 
@@ -73,9 +74,9 @@ def run(argv, job):
         if r1 == 0:
             break
 
-        logging.debug('Generated task %d.', taskid)
+        #logging.debug('Generated task %d.', taskid)
 
-        logging.info('Processing task %d...', taskid)
+        #logging.info('Processing task %d...', taskid)
 
         r2, res, ctx = job.spits_worker_run(wk, task, taskid)
 
@@ -98,7 +99,7 @@ def run(argv, job):
 
     job.spits_job_manager_finalize(jm)
 
-    logging.info('Committing Job...')
+    #logging.info('Committing Job...')
     r, res, ctx = job.spits_committer_commit_job(co, 0x12345678)
 
     job.spits_worker_finalize(wk)
