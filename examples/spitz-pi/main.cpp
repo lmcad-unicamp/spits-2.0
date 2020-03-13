@@ -153,7 +153,6 @@ public:
         result.push(o);
 
         std::cout << "[WK] Processed batch " << batch << "." << std::endl;
-        //spits_set_metric_int("ProcessedBatch", batch);
         return 0;
     }
 };
@@ -235,4 +234,3 @@ public:
 
 // Creates a factory class.
 spitz::factory *spitz_factory = new factory();
-spitz::metrics* metrics;
