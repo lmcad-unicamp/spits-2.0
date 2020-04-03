@@ -33,5 +33,5 @@ FURTHER READING:
 ## Test results
 Branch          | Build         | Tests coverage
 ----------------|-------------- | --------------
-master          | [![Build Status](https://travis-ci.org/hpg-cepetro/spitz.svg?branch=master)](https://travis-ci.org/hpg-cepetro/spitz) | [![codecov.io](https://codecov.io/github/hpg-cepetro/spitz/coverage.svg?branch=master)](https://codecov.io/github/hpg-cepetro/spitz)
-develop         | [![Build Status](https://travis-ci.org/hpg-cepetro/spitz.svg?branch=develop)](https://travis-ci.org/hpg-cepetro/spitz) | [![codecov.io](https://codecov.io/github/hpg-cepetro/spitz/coverage.svg?branch=develop)](https://codecov.io/github/hpg-cepetro/spitz)
+master          | [![Build Status](https://travis-ci.org/lmcad-unicamp/spits-2.0.svg?branch=master)](https://travis-ci.org/hpg-cepetro/spits-2.0) | [![codecov.io](https://codecov.io/github/lmcad-unicamp/spits-2.0/coverage.svg?branch=master)](https://codecov.io/github/lmcad-unicamp/spits-2.0)
+develop         | [![Build Status](https://travis-ci.org/lmcad-unicamp/spits-2.0.svg?branch=develop)](https://travis-ci.org/lmcad-unicamp/spits-2.0) | [![codecov.io](https://codecov.io/github/lmcad-unicamp/spits-2.0/coverage.svg?branch=develop)](https://codecov.io/github/lmcad-unicamp/spits-2.0)
