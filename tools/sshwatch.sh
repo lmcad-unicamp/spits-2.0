@@ -25,7 +25,7 @@
 #
 
 if [ "$#" -lt "4" ] ; then
-    echo "USAGE: sshwatch.sh <cluster-address> <remote-spitz-dir> <local-spitz-dir> <local-starting-port> [delay]"
+    echo "USAGE: sshwatch.sh <cluster-address> <remote-spits-dir> <local-spits-dir> <local-starting-port> [delay]"
     exit 1
 fi
 
