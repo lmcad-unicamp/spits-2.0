@@ -1,6 +1,7 @@
 /*
  * The MIT License (MIT)
  *
+ * Copyright (c) 2020 Edson Borin <edson@ic.unicamp.br>
  * Copyright (c) 2016 Caian Benedicto <caian@ggaunicamp.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy 
@@ -25,35 +26,34 @@
 
 // This define enables the C++ wrapping code around the C API, it must be used
 // only once per C++ module.
-#define SPITZ_ENTRY_POINT
+#define SPITS_ENTRY_POINT
 
-// Spitz serial debug enables a Spitz-compliant main function to allow 
+// Spits serial debug enables a Spits-compliant main function to allow 
 // the module to run as an executable for testing purposes.
-// #define SPITZ_SERIAL_DEBUG
+// #define SPITS_SERIAL_DEBUG
 
-#include <spitz/spitz.hpp>
-
+#include <spits.hpp>
 #include <iostream>
 
 // This class creates tasks.
-class job_manager : public spitz::job_manager
+class job_manager : public spits::job_manager
 {
 public:
-    job_manager(int argc, const char *argv[], spitz::istream& jobinfo)
+    job_manager(int argc, const char *argv[], spits::istream& jobinfo)
     {
         std::cout << "[JM] Job manager created." << std::endl;
     }
     
-    bool next_task(const spitz::pusher& task)
+    bool next_task(const spits::pusher& task)
     {
-        spitz::ostream o;
+        spits::ostream o;
                 
         // Serialize the task into a binary stream
         // ...
 
         std::cout << "[JM] Task generated." << std::endl;
         
-        // Send the task to the Spitz runtime
+        // Send the task to the Spits runtime
         task.push(o);
         
         // Return true until finished creating tasks
@@ -73,7 +73,7 @@ public:
 // because this can lead to a break of idempotence between tasks. The 'run'
 // method will not impose a 'const' behavior to allow libraries that rely 
 // on changing its internal state, for instance, OpenCL (see clpi example).
-class worker : public spitz::worker
+class worker : public spits::worker
 {    
 public:
     worker(int argc, const char *argv[])
@@ -81,15 +81,15 @@ public:
         std::cout << "[WK] Worker created." << std::endl;
     }
     
-    int run(spitz::istream& task, const spitz::pusher& result)
+    int run(spits::istream& task, const spits::pusher& result)
     {
         // Binary stream used to store the output
-        spitz::ostream o;
+        spits::ostream o;
         
         // Deserialize the task, process it and serialize the result
         // ...
         
-        // Send the result to the Spitz runtime
+        // Send the result to the Spits runtime
         result.push(o);
         
         std::cout << "[WK] Task processed." << std::endl;
@@ -101,15 +101,15 @@ public:
 // This class is responsible for merging the result of each individual task 
 // and, if necessary, to produce the final result after all of the task 
 // results have been received.
-class committer : public spitz::committer
+class committer : public spits::committer
 {
 public:
-    committer(int argc, const char *argv[], spitz::istream& jobinfo)
+    committer(int argc, const char *argv[], spits::istream& jobinfo)
     {
         std::cout << "[CO] Committer created." << std::endl;
     }
     
-    int commit_task(spitz::istream& result)
+    int commit_task(spits::istream& result)
     {
         // Deserialize the result from the task and use it 
         // to compose the final result
@@ -122,9 +122,9 @@ public:
     
     // Optional. If the result depends on receiving all of the task 
     // results, or if the final result must be serialized to the 
-    // Spitz Main, then an additional Commit Job is called.
+    // Spits Main, then an additional Commit Job is called.
 
-    // int commit_job(const spitz::pusher& final_result) 
+    // int commit_job(const spits::pusher& final_result) 
     // {
     //     // Process the final result
     //
@@ -140,27 +140,27 @@ public:
     }
 };
 
-// The factory binds the user code with the Spitz C++ wrapper code.
-class factory : public spitz::factory
+// The factory binds the user code with the Spits C++ wrapper code.
+class factory : public spits::factory
 {
 public:
-    spitz::job_manager *create_job_manager(int argc, const char *argv[],
-        spitz::istream& jobinfo)
+    spits::job_manager *create_job_manager(int argc, const char *argv[],
+        spits::istream& jobinfo)
     {
         return new job_manager(argc, argv, jobinfo);
     }
     
-    spitz::worker *create_worker(int argc, const char *argv[])
+    spits::worker *create_worker(int argc, const char *argv[])
     {
         return new worker(argc, argv);
     }
     
-    spitz::committer *create_committer(int argc, const char *argv[], 
-        spitz::istream& jobinfo)
+    spits::committer *create_committer(int argc, const char *argv[], 
+        spits::istream& jobinfo)
     {
         return new committer(argc, argv, jobinfo);
     }
 };
 
 // Creates a factory class.
-spitz::factory *spitz_factory = new factory();
+spits::factory *spits_factory = new factory();

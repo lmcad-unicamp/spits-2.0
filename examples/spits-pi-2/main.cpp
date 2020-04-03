@@ -1,6 +1,7 @@
 /*
  * The MIT License (MIT)
  *
+ * Copyright (c) 2020 Edson Borin <edson@ic.unicamp.br>
  * Copyright (c) 2016 Caian Benedicto <caian@ggaunicamp.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -25,13 +26,13 @@
 
 // This define enables the C++ wrapping code around the C API, it must be used
 // only once per C++ module.
-#define SPITZ_ENTRY_POINT
+#define SPITS_ENTRY_POINT
 
-// Spitz serial debug enables a Spitz-compliant main function to allow
+// Spits serial debug enables a Spits-compliant main function to allow
 // the module to run as an executable for testing purposes.
-// #define SPITZ_SERIAL_DEBUG
+// #define SPITS_SERIAL_DEBUG
 
-#include <spitz/spitz.hpp>
+#include <spits.hpp>
 
 #include <iostream>
 #include <sstream>
@@ -41,7 +42,7 @@
 #include <cmath>
 
 // Parameters should not be stored inside global variables because the
-// Spitz interface does not guarantee memory isolation between job
+// Spits interface does not guarantee memory isolation between job
 // manager, committer and workers. This can lead to a race condition when
 // each thread tries to initialize the parameters from argc and argv.
 struct parameters
@@ -74,14 +75,14 @@ struct parameters
 };
 
 // This class coordinates the execution of jobs
-class spitz_main : public spitz::spitz_main
+class spits_main_pi2 : public spits::spits_main
 {
 public:
-    int main(int argc, const char* argv[], const spitz::runner& runner)
+    int main(int argc, const char* argv[], const spits::runner& runner)
     {
         parameters p(argc, argv, "[SM] ");
 
-        spitz::istream final_result;
+        spits::istream final_result;
         double pi_1, pi_2, pi_err;
         int r;
 
@@ -146,14 +147,14 @@ public:
 };
 
 // This class creates tasks.
-class job_manager : public spitz::job_manager
+class job_manager : public spits::job_manager
 {
 private:
     parameters p;
     int i;
 
 public:
-    job_manager(int argc, const char *argv[], spitz::istream& jobinfo) :
+    job_manager(int argc, const char *argv[], spits::istream& jobinfo) :
         p(argc, argv, "[JM] "), i(0)
     {
         p.print();
@@ -161,9 +162,9 @@ public:
         std::cout << "[JM] Job manager created." << std::endl;
     }
 
-    bool next_task(const spitz::pusher& task)
+    bool next_task(const spits::pusher& task)
     {
-        spitz::ostream o;
+        spits::ostream o;
 
         if (i >= p.n)
             return false;
@@ -191,7 +192,7 @@ public:
 // because this can lead to a break of idempotence between tasks. The 'run'
 // method will not impose a 'const' behavior to allow libraries that rely
 // on changing its internal state, for instance, OpenCL (see clpi example).
-class worker : public spitz::worker
+class worker : public spits::worker
 {
 private:
     parameters p;
@@ -203,10 +204,10 @@ public:
         std::cout << "[WK] Worker created." << std::endl;
     }
 
-    int run(spitz::istream& task, const spitz::pusher& result)
+    int run(spits::istream& task, const spits::pusher& result)
     {
         // Data stream used to store the output
-        spitz::ostream o;
+        spits::ostream o;
 
         // Read the current step from the task
         int i, batch;
@@ -224,7 +225,7 @@ public:
             o << x;
         }
 
-        // Send the result to the Spitz runtime
+        // Send the result to the Spits runtime
         result.push(o);
 
         std::cout << "[WK] Processed batch " << batch << "." << std::endl;
@@ -235,21 +236,21 @@ public:
 // This class is responsible for merging the result of each individual task
 // and, if necessary, to produce the final result after all of the task
 // results have been received.
-class committer : public spitz::committer
+class committer : public spits::committer
 {
 private:
     parameters p;
     double pival;
 
 public:
-    committer(int argc, const char *argv[], spitz::istream& jobinfo) :
+    committer(int argc, const char *argv[], spits::istream& jobinfo) :
         p(argc, argv, "[CO] "), pival(0.0)
     {
         p.print();
         std::cout << "[CO] Committer created." << std::endl;
     }
 
-    int commit_task(spitz::istream& result)
+    int commit_task(spits::istream& result)
     {
         std::cout << "[CO] Committing result..." << std::endl;
 
@@ -263,10 +264,10 @@ public:
         return 0;
     }
 
-    int commit_job(const spitz::pusher& final_result)
+    int commit_job(const spits::pusher& final_result)
     {
         // Our result stream
-        spitz::ostream o;
+        spits::ostream o;
 
         // Multiply the sum of terms by the step to get the
         // final result of pi and print it with the maximum
@@ -285,32 +286,32 @@ public:
     }
 };
 
-// The factory binds the user code with the Spitz C++ wrapper code.
-class factory : public spitz::factory
+// The factory binds the user code with the Spits C++ wrapper code.
+class factory : public spits::factory
 {
 public:
-    spitz::spitz_main *create_spitz_main()
+    spits::spits_main *create_spits_main()
     {
-        return new spitz_main();
+      return new spits_main_pi2();
     }
 
-    spitz::job_manager *create_job_manager(int argc, const char *argv[],
-        spitz::istream& jobinfo)
+    spits::job_manager *create_job_manager(int argc, const char *argv[],
+        spits::istream& jobinfo)
     {
         return new job_manager(argc, argv, jobinfo);
     }
 
-    spitz::worker *create_worker(int argc, const char *argv[])
+    spits::worker *create_worker(int argc, const char *argv[])
     {
         return new worker(argc, argv);
     }
 
-    spitz::committer *create_committer(int argc, const char *argv[],
-        spitz::istream& jobinfo)
+    spits::committer *create_committer(int argc, const char *argv[],
+        spits::istream& jobinfo)
     {
         return new committer(argc, argv, jobinfo);
     }
 };
 
 // Creates a factory class.
-spitz::factory *spitz_factory = new factory();
+spits::factory *spits_factory = new factory();

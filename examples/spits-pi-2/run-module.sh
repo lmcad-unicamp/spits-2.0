@@ -26,9 +26,9 @@ mkdir -p run || exit 1
 
 cd run || exit 1
 
-echo Running the spits-pi module with PY-PITS...
+echo Running the spits-pi-2 module with PY-PITS...
 
-CMD="../../../runtime/pypits/spits-run.sh ../bin/spits-pi-module 100000"
+CMD="../../../runtime/pypits/spits-run.sh ../bin/spits-pi-2-module 100000"
 
 echo $CMD
 

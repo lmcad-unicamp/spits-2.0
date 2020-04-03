@@ -22,16 +22,22 @@
 # IN THE SOFTWARE.
 # 
 
-mkdir -p run || exit 1
+mkdir -p bin
 
-cd run || exit 1
+# Change this to your favorite compiler
+COMPILER="g++"
 
-echo Running the spits-pi module with PY-PITS...
+ALLFLAGS="-g -O0 -I../../dev/include/"
 
-CMD="../../../runtime/pypits/spits-run.sh ../bin/spits-pi-module 100000"
+SFLAGS="-DSPITS_SERIAL_DEBUG" # Flags for serial build
 
-echo $CMD
+RFLAGS="-fPIC -shared"
 
-$CMD || exit 1
+mkdir -p bin
 
+echo Building the getting-started application as a spits module...
+$COMPILER $ALLFLAGS -o ./bin/getting-started-module ./main.cpp $RFLAGS || exit 1
+
+echo Building the getting-started application as a serial binary...
+$COMPILER $ALLFLAGS -o ./bin/getting-started-serial ./main.cpp $SFLAGS || exit 1
 

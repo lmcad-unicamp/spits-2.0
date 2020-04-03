@@ -1,0 +1,4 @@
+TODO:
+
+ 1) Add tools to inspect/analyse the log of SPITS. Look for errors, warning or performance issues.
+
