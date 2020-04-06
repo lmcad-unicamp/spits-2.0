@@ -8,14 +8,19 @@ def loadFiles(fList):
   jobs = []
   for i in fList:
     # Create Job
-    if("SPITZ" not in i):
+    if("SPITS" not in i):
       print("Ignored:", i)
       continue
-    job = {"Name" : i[i.index("SPITZ"):], "Start Time" :"", "End Init. Time" :"", "Kill Time" :"", "Stats": "", "Threads" : {}}
+    job = {"Name" : i[i.index("SPITS"):], "Start Time" :"", "End Init. Time" :"", "Kill Time" :"", "Stats": "", "Threads" : {}}
     jobs.append(job)
 
     #  Parse Log
-    f = open(i)
+    try:
+      f = open(i)
+    except Exception as e:
+      print(e)
+      exit(1)
+    
     for j in f:
       jVec = j.strip().split(" - ") # [0] = datetime, [1] thread, [2] log type, [3] message
       if(len(jVec) < 4):
@@ -99,7 +104,7 @@ def processTasks(jobs):
       j["Stats"]["Time"]["Init. Overhead"] = j["End Init. Time"] - j["Start Time"]
 
 def printStatistics(name, v, total):
-  print("%s, %.2f, %.6f, %.6f, %.6f, %.6f, %.6f" % (name, 100*sum(v)/total, sum(v), mean(v), stdev(v), min(v), max(v)))
+  print("%s, %.2f, %.6f, %.6f, %.6f, %.6f, %.6f" % (name, 100*sum(v)/total, sum(v), mean(v), (lambda x:stdev(x) if len(x) > 1 else x[0])(v), min(v), max(v)))
 
 
 def jobStatistics(jobs):
@@ -117,6 +122,9 @@ def jobStatistics(jobs):
     starving.append(j["Stats"]["Time"]["Total"].total_seconds() - duplicated_work[-1] - useful_work[-1] - init_overhead[-1])
 
   total = sum(init_overhead) + sum(useful_work) + sum(duplicated_work) + sum(starving)
+  if(total == 0):
+    print("Failed to parse logs")
+    return
   print("Metric, %, total, average, std, min, max")
   printStatistics("Init overhead", init_overhead, total)
   printStatistics("Useful work", useful_work, total)
@@ -224,7 +232,7 @@ if __name__ == "__main__":
   parser = argparse.ArgumentParser(description=description_msg,
                                    formatter_class=argparse.RawTextHelpFormatter)
 
-  parser.add_argument('files', metavar='SPITZ_LOG_FILE', type=str, nargs='+',
+  parser.add_argument('files', metavar='SPITS_LOG_FILE', type=str, nargs='+',
                       help='log file to be processed.')
 
   args = parser.parse_args()
