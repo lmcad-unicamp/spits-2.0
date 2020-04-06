@@ -22,16 +22,22 @@
 # IN THE SOFTWARE.
 # 
 
+MODULE=../bin/getting-started-module
+
 mkdir -p run || exit 1
 
 cd run || exit 1
 
+if [ ! -f ${MODULE} ]; then
+    echo "Module file (${MODULE}) is missing. "
+    echo "Try building it first by running ./build.sh"
+    exit 1
+fi
+
 echo Running the getting-started module with PY-PITS...
 
-CMD="../../../runtime/pypits/spits-run.sh ../bin/getting-started-module 100000"
+CMD="../../../runtime/pypits/spits-run.sh ${MODULE} 100000"
 
 echo $CMD
 
 $CMD || exit 1
-
-
