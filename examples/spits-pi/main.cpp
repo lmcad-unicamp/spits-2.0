@@ -36,6 +36,7 @@
 #include <iostream>
 #include <string>
 #include <limits>
+#include <math.h>       /* ceil */
 
 // Parameters should not be stored inside global variables because the
 // Spits interface does not guarantee memory isolation between job
@@ -52,23 +53,43 @@ struct parameters
     int split;
 
     parameters(int argc, const char *argv[], const std::string& who = "") :
-        split(1000), who(who)
+      who(who)
     {
-        if (argc < 2 || argc > 3) {
-            std::cerr << "USAGE: " << argv[0] << " N" << std::endl;
-            exit(1);
+        if (argc < 3 || argc > 3) {
+	  std::cerr << "USAGE: " << argv[0] << " NSAMPLES SAMPLES_PER_TASK" << std::endl
+		    << std::endl
+		    << " This program computes the value of PI using the Monte Carlo method." << std::endl
+		    << std::endl
+		    << " NSAMPLES        : the number of samples computed by the method." << std::endl
+		    << " SAMPLES_PER_TASK: the number of samples computed by each SPITS task." << std::endl
+		    << std::endl
+		    << " PI accuracy: You may increase the number of samples (NSAMPLES) to obtain" << std::endl
+		    << " a more accurate value for pi." << std::endl
+		    << std::endl
+		    << " A note on performance: Due to communication and data management overheads," << std::endl
+		    << " SPITS jobs work well with the PYPITS runtime when the amount of work " << std::endl
+		    << " performed by each task is not too small." << std::endl
+		    << " If you want to increase the amount of work performed by each task, just" << std::endl
+		    << " increase the value of SAMPLES_PER_TASK. " << std::endl
+		    << " Increasing the value of SAMPLES_PER_TASK will also reduce the amount of" << std::endl
+		    << " tasks to be processed. Notice that, if this ammount is too small, a system" << std::endl
+		    << " with multiple SPITS workers may starve due to lack of tasks. " << std::endl;
+	  exit(1);
         }
 
-        n = atoi(argv[1]);
+        n     = atoi(argv[1]);
+        split = atoi(argv[2]);
         step = 1.0 / (double)n;
     }
 
     void print()
     {
         std::cout
-            << who << "N: " << n << std::endl
-            << who << "step: " << step << std::endl;
-    }
+            << who << "NSAMPLES: " << n << std::endl
+            << who << "SAMPLES_PER_TASK: " << split << std::endl
+            << who << "Total number of tasks:" << ceil((double)n/(double)split) << std::endl;
+ 
+  }
 };
 
 // This class creates tasks.
@@ -196,9 +217,14 @@ public:
         // final result of pi and print it with the maximum
         // precision possible
         pival = pival * p.step;
+	double correct_pi = 3.141592653589793238;
         std::cout.precision(17);
-        std::cout << "[CO] The value of pi is: " << std::fixed
-            << pival << std::endl;
+        std::cout << "[CO] The real value of pi with 18 decimal places is: " << std::fixed
+		  << correct_pi << std::endl;
+        std::cout << "[CO] The value by the monte carlo method is: " << std::fixed
+		  << pival << std::endl;
+        std::cout << "[CO] The error is approximately: " << std::fixed
+		  << (double) correct_pi - (double) pival << std::endl;
 
         // A result must be pushed even if it is an empty one
         final_result.push(NULL, 0);
