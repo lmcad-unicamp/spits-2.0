@@ -104,7 +104,7 @@ def processTasks(jobs):
       j["Stats"]["Time"]["Init. Overhead"] = j["End Init. Time"] - j["Start Time"]
 
 def printStatistics(name, v, total):
-  print("%s, %.2f, %.6f, %.6f, %.6f, %.6f, %.6f" % (name, 100*sum(v)/total, sum(v), mean(v), (lambda x:stdev(x) if len(x) > 1 else x[0])(v), min(v), max(v)))
+  print("%s, %.2f, %.6f, %.6f, %.6f, %.6f, %.6f" % (name, 100*sum(v)/total, sum(v), mean(v), (lambda x:stdev(x) if len(x) > 1 else 0)(v), min(v), max(v)))
 
 
 def jobStatistics(jobs):
