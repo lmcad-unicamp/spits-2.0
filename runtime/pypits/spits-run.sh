@@ -51,7 +51,7 @@ fi
 
 if [ -z "$SPITSARGS" ]
 then
-    SPITSARGS="--nw=0 --overfill=0 --announce=file --verbose=0 --jobid=123dasilva4"
+    SPITSARGS="--nw=0 --overfill=0 --announce=file --verbose=10 --jobid=123dasilva4"
 fi
 
 MODULE="$1"

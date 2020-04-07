@@ -1,7 +1,0 @@
-TODO
-
-  1) Add multiple unit tests.
-  
-  2) Add a header to the unit tests files.
-
-  3) Break the main.cpp into multiple unit tests.

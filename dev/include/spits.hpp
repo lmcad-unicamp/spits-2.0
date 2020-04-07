@@ -30,7 +30,6 @@
 #include "spits.h"
 #include "stream.hpp"
 #include "metrics.hpp"
-
 #include <iostream>
 
 namespace spits
@@ -156,9 +155,10 @@ namespace spits
     {
     public:
         virtual spits_main *create_spits_main() { return new spits_main(); }
-        virtual job_manager *create_job_manager(int, const char *[], istream&) = 0;
-        virtual worker *create_worker(int, const char *[]) = 0;
-        virtual committer *create_committer(int, const char *[], istream&) = 0;
+        virtual spits::metrics *create_metrics(unsigned int size) { return new spits::metrics(size); }
+        virtual job_manager *create_job_manager(int, const char *[], istream&, spits::metrics&) = 0;
+        virtual worker *create_worker(int, const char *[], spits::metrics&) = 0;
+        virtual committer *create_committer(int, const char *[], istream&, spits::metrics&) = 0;
     };
 };
 
@@ -179,10 +179,12 @@ extern "C" int spits_main(int argc, const char* argv[], spitsrun_t run)
 }
 
 extern "C" void *spits_job_manager_new(int argc, const char *argv[],
-    const void* jobinfo, spitssize_t jobinfosz)
+    const void* jobinfo, spitssize_t jobinfosz, const void* metrics)
 {
     spits::istream ji(jobinfo, jobinfosz);
-    spits::job_manager *jm = spits_factory->create_job_manager(argc, argv, ji);
+    spits::metrics* m = const_cast<spits::metrics*>(reinterpret_cast<const spits::metrics *>(metrics));
+    spits::job_manager *jm = spits_factory->create_job_manager(argc, 
+        argv, ji, *m);
     return reinterpret_cast<void*>(jm);
 }
 
@@ -204,9 +206,10 @@ extern "C" void spits_job_manager_finalize(void *user_data)
     delete jm;
 }
 
-extern "C" void *spits_worker_new(int argc, const char **argv)
+extern "C" void *spits_worker_new(int argc, const char **argv, const void* metrics)
 {
-    spits::worker *w = spits_factory->create_worker(argc, argv);
+    spits::metrics* m = const_cast<spits::metrics*>(reinterpret_cast<const spits::metrics *>(metrics));
+    spits::worker *w = spits_factory->create_worker(argc, argv, *m);
     return reinterpret_cast<void*>(w);
 }
 
@@ -232,10 +235,11 @@ extern "C" void spits_worker_finalize(void *user_data)
 }
 
 extern "C" void *spits_committer_new(int argc, const char *argv[],
-    const void* jobinfo, spitssize_t jobinfosz)
+    const void* jobinfo, spitssize_t jobinfosz, const void* metrics)
 {
     spits::istream ji(jobinfo, jobinfosz);
-    spits::committer *co = spits_factory->create_committer(argc, argv, ji);
+    spits::metrics* m = const_cast<spits::metrics*>(reinterpret_cast<const spits::metrics *>(metrics));
+    spits::committer *co = spits_factory->create_committer(argc, argv, ji, *m);
     return reinterpret_cast<void*>(co);
 }
 
@@ -297,9 +301,10 @@ static int spits_debug_runner(int argc, const char** argv,
     const void* pjobinfo, spitssize_t jobinfosz,
     const void** pfinal_result, spitssize_t* pfinal_resultsz)
 {
-    void* jm = spits_job_manager_new(argc, argv, pjobinfo, jobinfosz);
-    void* co = spits_committer_new(argc, argv, pjobinfo, jobinfosz);
-    void* wk = spits_worker_new(argc, argv);
+    void* metrics = spits_metrics_new(10);
+    void* jm = spits_job_manager_new(argc, argv, pjobinfo, jobinfosz, metrics);
+    void* co = spits_committer_new(argc, argv, pjobinfo, jobinfosz, metrics);
+    void* wk = spits_worker_new(argc, argv, metrics);
 
     static int64_t jid = 0;
     int64_t tid = 0;
@@ -321,6 +326,8 @@ static int spits_debug_runner(int argc, const char** argv,
                 << std::endl;
             exit(1);
         }
+        
+        spits_set_metric_int(metrics, "Generated Tasks", tid);
 
         result.clear();
         std::cerr << "[SPITS] Executing task " << tid << "..." << std::endl;
@@ -332,12 +339,15 @@ static int spits_debug_runner(int argc, const char** argv,
                 << std::endl;
             goto dump_task_and_exit;
         }
+        
 
         if (task.size() == 0) {
             std::cerr << "[SPITS] Worker didn't push a result!"
                 << std::endl;
             goto dump_task_and_exit;
         }
+        
+        spits_set_metric_int(metrics, "Executed Tasks", tid);
 
         std::cerr << "[SPITS] Committing task " << tid << "..." << std::endl;
         r2 = spits_committer_commit_pit(co, result.data()+1, result.size()-1);
@@ -347,6 +357,8 @@ static int spits_debug_runner(int argc, const char** argv,
                 << std::endl;
             goto dump_result_and_exit;
         }
+        
+        spits_set_metric_int(metrics, "Commited Tasks", tid);
         tid++;
     }
     std::cerr << "[SPITS] Finished processing tasks." << std::endl;
@@ -377,9 +389,14 @@ static int spits_debug_runner(int argc, const char** argv,
 
     std::cerr << "[SPITS] Finalizing worker..." << std::endl;
     spits_worker_finalize(wk);
+    
+    spits_metrics_debug_dump(metrics);
+    spits_metrics_delete(metrics);
 
     std::cerr << "[SPITS] Job " << jid << " completed." << std::endl;
     jid++;
+    
+    delete final_result;
 
     return 0;
 
@@ -409,6 +426,9 @@ dump_task_and_exit:
         std::cerr << "[SPITS] Task dump generated as " << ss.str() <<
             " [" << (task.size()-1) << " bytes]. " << std::endl;
     }
+    
+    spits_metrics_delete(metrics);
+    delete final_result;
     exit(1);
 }
 
@@ -417,6 +437,9 @@ int main(int argc, const char** argv)
     std::cerr << "[SPITS] Entering debug mode..." << std::endl;
     spits_main(argc, argv, spits_debug_runner);
     std::cerr << "[SPITS] Spits finished." << std::endl;
+    
+    delete spits_factory;
+    return 0;
 }
 #endif
 

@@ -394,8 +394,8 @@ class App(object):
 
     def run(self):
         global tm_spits_profile_buffer_size
-        self.job.spits_metric_new(tm_spits_profile_buffer_size)
-        self.job.spits_set_metric_int("created_time", int(time.time()))
+        #self.job.spits_metric_new(tm_spits_profile_buffer_size)
+        #self.job.spits_set_metric_int("created_time", int(time.time()))
         argv = self.args.margs
         # Enable perf module
         if tm_profiling:
@@ -414,7 +414,7 @@ class App(object):
             announce_file(addr)
         logging.info('Waiting for work...')
         self.server.Join()
-        self.job.spits_metric_finish()
+        #self.job.spits_metric_finish()
 
     def timeout_exit(self):
         if self.tpool.Empty() and self.active_workers.get() <= 0:

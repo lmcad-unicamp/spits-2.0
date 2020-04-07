@@ -579,7 +579,7 @@ def push_tasks(job: JobBinary, runid: int, jm: Pointer, tm: SimpleEndpoint, task
             response = tm.ReadInt64(jm_recv_timeout)
             # Increment the sent tasks
             jm_counter_tasks_sent += 1
-            job.spits_set_metric_int("tasks_sent", taskid)
+            #job.spits_set_metric_int("tasks_sent", taskid)
 
             # Task was sent, but the task manager is now full. Stop sending for a while...
             if response == messaging.msg_send_full:
@@ -650,7 +650,7 @@ def commit_tasks(job, runid, co, tm, tasklist, completed):
                 n_errors += 1
                 co_counter_tasks_error += 1
                 if r == messaging.res_module_error:
-                    logging.error('The remote worker crashed while ' +
+                    logging.error('the remote worker crashed while ' +
                                   'executing task %d!', r)
                 else:
                     logging.error('The task %d was not successfully executed, ' +
@@ -1096,7 +1096,7 @@ def run(argv, jobinfo, job, runid):
     logging.info("Starting job manager {} for job {}...".format(jm_name, runid))
     # Create the job manager from the job module
     jm = job.spits_job_manager_new(argv, jobinfo)
-    job.spits_set_metric_int("created_time", int(time.time()))
+    #job.spits_set_metric_int("created_time", int(time.time()))
     jmthread = threading.Thread(target=jobmanager, args=(argv, job, runid, jm, tasklist, completed))
     jmthread.start()
 
@@ -1169,7 +1169,7 @@ def main(argv):
     module = args.margs[0]
     job = JobBinary(module)
     # Create the metrics manager
-    job.spits_metric_new(jm_spits_profile_buffer_size)
+    # job.spits_metric_new(jm_spits_profile_buffer_size)
 
     # Remove JM arguments when passing to the module
     margv = args.margs
@@ -1207,7 +1207,7 @@ def main(argv):
     server_listener.Stop()
 
     # Destroy the metrics manager
-    job.spits_metric_finish()
+    # job.spits_metric_finish()
 
     # Kill the workers
     if jm_killtms:

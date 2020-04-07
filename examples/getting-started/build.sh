@@ -27,7 +27,7 @@ mkdir -p bin
 # Change this to your favorite compiler
 COMPILER="g++"
 
-ALLFLAGS="-g -O0 -I../../dev/include/"
+ALLFLAGS="-g -O3 -I../../dev/include/"
 
 SFLAGS="-DSPITS_SERIAL_DEBUG" # Flags for serial build
 

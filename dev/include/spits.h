@@ -56,7 +56,7 @@ int spits_main(int argc, const char* argv[], spitsrun_t run);
 /* Job Manager */
 
 void* spits_job_manager_new(int argc, const char *argv[],
-    const void* jobinfo, spitssize_t jobinfosz);
+    const void* jobinfo, spitssize_t jobinfosz, const void*);
 
 int spits_job_manager_next_task(void *user_data,
     spitspush_t push_task, spitsctx_t jmctx);
@@ -65,7 +65,7 @@ void spits_job_manager_finalize(void *user_data);
 
 /* Worker */
 
-void* spits_worker_new(int argc, const char *argv[]);
+void* spits_worker_new(int argc, const char *argv[], const void*);
 
 int spits_worker_run(void *user_data, const void* task,
     spitssize_t tasksz, spitspush_t push_result,
@@ -76,7 +76,7 @@ void spits_worker_finalize(void *user_data);
 /* Committer */
 
 void* spits_committer_new(int argc, const char *argv[],
-    const void* jobinfo, spitssize_t jobinfosz);
+    const void* jobinfo, spitssize_t jobinfosz, const void*);
 
 int spits_committer_commit_pit(void *user_data,
     const void* result, spitssize_t resultsz);
@@ -85,22 +85,6 @@ int spits_committer_commit_job(void *user_data,
     spitspush_t push_final_result, spitsctx_t jobctx);
 
 void spits_committer_finalize(void *user_data);
-
-/* Metrics */
-
-void* spits_metric_new(int buffer_size);
-
-void* spits_get_metrics_list(void);
-
-void* spits_get_metrics_last_values(const char** metrics_list);
-
-void* spits_get_metrics_history(const char** metrics_list, int* n_list);
-
-void spits_set_metric(const char* metric_name, void* value);
-
-void spits_metric_finish(void);
-
-void spits_set_metric_int(const char* metric_name, int value);
 
 #ifdef __cplusplus
 }

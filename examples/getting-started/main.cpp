@@ -145,18 +145,18 @@ class factory : public spits::factory
 {
 public:
     spits::job_manager *create_job_manager(int argc, const char *argv[],
-        spits::istream& jobinfo)
+        spits::istream& jobinfo, spits::metrics& metrics)
     {
         return new job_manager(argc, argv, jobinfo);
     }
     
-    spits::worker *create_worker(int argc, const char *argv[])
+    spits::worker *create_worker(int argc, const char *argv[], spits::metrics& metrics)
     {
         return new worker(argc, argv);
     }
     
     spits::committer *create_committer(int argc, const char *argv[], 
-        spits::istream& jobinfo)
+        spits::istream& jobinfo, spits::metrics& metrics)
     {
         return new committer(argc, argv, jobinfo);
     }

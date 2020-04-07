@@ -86,7 +86,8 @@ class JobBinary(object):
             ctypes.c_int,
             ctypes.POINTER(ctypes.c_char_p),
             ctypes.c_void_p,
-            ctypes.c_longlong
+            ctypes.c_longlong,
+            ctypes.c_void_p
         ])
 
         self.try_init_method('spits_job_manager_next_task', ctypes.c_int, [
@@ -103,7 +104,8 @@ class JobBinary(object):
 
         self.try_init_method('spits_worker_new', ctypes.c_void_p, [
             ctypes.c_int,
-            ctypes.POINTER(ctypes.c_char_p)
+            ctypes.POINTER(ctypes.c_char_p),
+            ctypes.c_void_p
         ])
 
         self.try_init_method('spits_worker_run', ctypes.c_int, [
@@ -124,7 +126,8 @@ class JobBinary(object):
             ctypes.c_int,
             ctypes.POINTER(ctypes.c_char_p),
             ctypes.c_void_p,
-            ctypes.c_longlong
+            ctypes.c_longlong,
+            ctypes.c_void_p
         ])
 
         self.try_init_method('spits_committer_commit_pit', ctypes.c_int, [
@@ -146,26 +149,37 @@ class JobBinary(object):
         #Metrics
 
         self.try_init_method('spits_metric_new', ctypes.c_void_p, [
+            ctypes.c_void_p,
             ctypes.c_int
         ])
 
-        self.try_init_method('spits_metric_finish', None, None)
+        self.try_init_method('spits_metric_finish', None, [
+            ctypes.c_void_p])
 
-        self.try_init_method('spits_get_metrics_list', ctypes.c_void_p, None)
+        self.try_init_method('spits_get_metrics_list', ctypes.c_void_p, [
+            ctypes.c_void_p])
 
         self.try_init_method('spits_get_metrics_last_values', ctypes.c_void_p, [
+            ctypes.c_void_p,
             ctypes.POINTER(ctypes.c_char_p)
         ])
 
         self.try_init_method('spits_get_metrics_history', ctypes.c_void_p, [
+            ctypes.c_void_p,
             ctypes.POINTER(ctypes.c_char_p),
             ctypes.POINTER(ctypes.c_int)
         ])
 
         self.try_init_method('spits_set_metric_int', None, [
+            ctypes.c_void_p,
             ctypes.c_char_p,
             ctypes.c_int,
         ])
+
+        self.metrics = self.spits_metric_new(100)
+    
+    def __del__(self):
+        self.spits_metric_finish(self.metrics)
 
 
     def try_init_method(self, name, restype, argtypes):
@@ -258,7 +272,7 @@ class JobBinary(object):
         cargc, cargv = self.c_argv(argv)
         # Call the native method casting the result to a simple pointer
         return Pointer(self.module.spits_job_manager_new(cargc,
-            cargv, jobinfo.get_pointer(), jobinfo.get_size()))
+            cargv, jobinfo.get_pointer(), jobinfo.get_size(), self.metrics.get_value()))
 
     def spits_job_manager_next_task(self, user_data: Pointer, jmctx: int or Pointer) -> tuple:
         """ Generates a new task using the job manager next_task interface from the job manager instance
@@ -312,7 +326,7 @@ class JobBinary(object):
         # Cast the C arguments
         cargc, cargv = self.c_argv(argv)
         # Call the native method casting the result to a simple pointer
-        return Pointer(self.module.spits_worker_new(cargc, cargv))
+        return Pointer(self.module.spits_worker_new(cargc, cargv, self.metrics.get_value()))
 
     def spits_worker_run(self, user_data, task, taskctx):
         res = [None, None, None]
@@ -347,7 +361,7 @@ class JobBinary(object):
         cargc, cargv = self.c_argv(argv)
         # Call the native method casting the result to a simple pointer
         return Pointer(self.module.spits_committer_new(cargc, cargv,
-            jobinfo.get_pointer(), jobinfo.get_size()))
+            jobinfo.get_pointer(), jobinfo.get_size(), self.metrics.get_value()))
 
     def spits_committer_commit_pit(self, user_data, result):
         # Create the pointer to result and result size
@@ -384,14 +398,14 @@ class JobBinary(object):
 
 
     def spits_metric_new(self, buffer_size):
-        if not hasattr(self.module, 'spits_metric_new'):
+        if not hasattr(self.module, 'spits_metrics_new'):
             return
-        return Pointer(self.module.spits_metric_new(ctypes.c_int(buffer_size)))
+        return Pointer(self.module.spits_metrics_new(ctypes.c_int(buffer_size)))
 
-    def spits_metric_finish(self):
+    def spits_metric_finish(self, metrics):
         if not hasattr(self.module, 'spits_metric_finish'):
             return
-        return self.module.spits_metric_finish()
+        return self.module.spits_metric_finish(metrics.get_value())
 
 
     def spits_get_metrics_list(self):
