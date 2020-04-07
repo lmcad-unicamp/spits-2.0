@@ -36,11 +36,7 @@ fi
 
 echo Running the spits-pi module with PY-PITS...
 
-<<<<<<< HEAD
-CMD="../../../runtime/pypits/spits-run.sh ../bin/spits-pi-module 10000"
-=======
 CMD="../../../runtime/pypits/spits-run.sh ${MODULE} 10000000 1000000"
->>>>>>> 6f3617797951b9ebc76a09f56b1225d146de832e
 
 echo $CMD
 
