@@ -2,3 +2,4 @@ TODO:
 
  1) Add tools to inspect/analyse the log of SPITS. Look for errors, warning or performance issues.
 
+ 2) Improve the sshwatch.sh documentation. Add a -h option and add information into the README.md

@@ -22,13 +22,25 @@
 # IN THE SOFTWARE.
 # 
 
+MODULE=../bin/spits-pi-module
+
 mkdir -p run || exit 1
 
 cd run || exit 1
 
+if [ ! -f ${MODULE} ]; then
+    echo "Module file (${MODULE}) is missing. "
+    echo "Try building it first by running ./build.sh"
+    exit 1
+fi
+
 echo Running the spits-pi module with PY-PITS...
 
+<<<<<<< HEAD
 CMD="../../../runtime/pypits/spits-run.sh ../bin/spits-pi-module 10000"
+=======
+CMD="../../../runtime/pypits/spits-run.sh ${MODULE} 10000000 1000000"
+>>>>>>> 6f3617797951b9ebc76a09f56b1225d146de832e
 
 echo $CMD
 
