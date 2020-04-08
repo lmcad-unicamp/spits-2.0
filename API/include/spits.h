@@ -1,6 +1,7 @@
 /*
  * The MIT License (MIT)
  *
+ * Copyright (c) 2020 Otávio Napoli <otavio.napoli@gmail.com>
  * Copyright (c) 2020 Edson Borin <edson@ic.unicamp.br>
  * Copyright (c) 2015 Caian Benedicto <caian@ggaunicamp.com>
  * Copyright (c) 2014 Ian Liu Rodrigues <ian.liu@ggaunicamp.com>

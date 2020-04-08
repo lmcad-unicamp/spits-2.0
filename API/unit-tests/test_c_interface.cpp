@@ -83,6 +83,9 @@ void test_c_interface(void)
         
         // metric int parse
         {
+            //Read metric value type
+            assert(read_longlong(&data[read_ptr]) == spits::TYPE_INT);
+            read_ptr += sizeof(int64_t);
             //Read metric int value
             assert(read_longlong(&data[read_ptr]) == n_elements*2-1);
             read_ptr += sizeof(int64_t);
@@ -99,6 +102,9 @@ void test_c_interface(void)
         
         // metric float parse
         {
+            //Read metric value type
+            assert(read_longlong(&data[read_ptr]) == spits::TYPE_FLOAT);
+            read_ptr += sizeof(int64_t);
             //Read metric float value
             assert(read_float(&data[read_ptr]) == n_elements*2-1+0.5);
             read_ptr += sizeof(float);
@@ -115,6 +121,9 @@ void test_c_interface(void)
         
         // metric double parse
         {
+            //Read metric value type
+            assert(read_longlong(&data[read_ptr]) == spits::TYPE_DOUBLE);
+            read_ptr += sizeof(int64_t);
             //Read metric double value
             assert(read_double(&data[read_ptr]) == n_elements*2-1+0.5);
             read_ptr += sizeof(double);
@@ -131,6 +140,10 @@ void test_c_interface(void)
         
         // metric string parse
         {
+            //Read metric value type
+            assert(read_longlong(&data[read_ptr]) == spits::TYPE_BYTES);
+            read_ptr += sizeof(int64_t);
+            
             // Read string size
             std::string str_name(str);
             uint64_t str_size = read_longlong(&data[read_ptr]);
@@ -166,6 +179,10 @@ void test_c_interface(void)
         
         // metric int parse
         {
+            //Read metric value type
+            assert(read_longlong(&data[read_ptr]) == spits::TYPE_INT);
+            read_ptr += sizeof(int64_t);
+            
             // Sequence no
             int64_t seq_no = read_longlong(&data[read_ptr]);
             assert(seq_no == n_elements);
@@ -192,6 +209,10 @@ void test_c_interface(void)
         
         // metric float parse
         {
+            //Read metric value type
+            assert(read_longlong(&data[read_ptr]) == spits::TYPE_FLOAT);
+            read_ptr += sizeof(int64_t);
+            
             // Sequence no
             int64_t seq_no = read_longlong(&data[read_ptr]);
             assert(seq_no == n_elements);
@@ -218,6 +239,10 @@ void test_c_interface(void)
         
         // metric double parse
         {
+            //Read metric value type
+            assert(read_longlong(&data[read_ptr]) == spits::TYPE_DOUBLE);
+            read_ptr += sizeof(int64_t);
+            
             // Sequence no
             int64_t seq_no = read_longlong(&data[read_ptr]);
             assert(seq_no == n_elements);
@@ -244,6 +269,10 @@ void test_c_interface(void)
         
         // metric str parse
         {
+            //Read metric value type
+            assert(read_longlong(&data[read_ptr]) == spits::TYPE_BYTES);
+            read_ptr += sizeof(int64_t);
+            
             // Sequence no
             int64_t seq_no = read_longlong(&data[read_ptr]);
             assert(seq_no == n_elements+1);

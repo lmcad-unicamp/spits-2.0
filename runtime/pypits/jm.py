@@ -3,6 +3,7 @@
 
 # The MIT License (MIT)
 #
+# Copyright (c) 2020 Otávio Napoli <otavio.napoli@gmail.com>
 # Copyright (c) 2020 Edson Borin <edson@ic.unicamp.br>
 # Copyright (c) 2015 Caian Benedicto <caian@ggaunicamp.com>
 #
@@ -33,7 +34,7 @@ from utils import PerfModule
 from utils import Listener
 from utils import Pointer
 import Args
-import sys, threading, os, time, logging, struct, traceback, json
+import sys, threading, os, time, logging, struct, traceback, json, datetime
 
 # Global configuration parameters
 jm_killtms = None  # Kill task managers after execution
@@ -119,7 +120,7 @@ def parse_global_config(argdict: Args) -> None:
     jm_heartbeat_interval = as_float(argdict.get('heartbeat-interval', 10))
     jm_jobid = argdict.get('jobid', '')
     jm_name = argdict.get('jmname', 'JobManager-{}'.format(os.getpid()))
-    jm_spits_profile_buffer_size = as_int(argdict.get('profile-buffer', 100))
+    jm_spits_profile_buffer_size = as_int(argdict.get('profile-buffer', 10))
     jm_port = as_int(argdict.get('net-port', config.def_spits_jm_port))
 
 
@@ -558,6 +559,7 @@ def push_tasks(job: JobBinary, runid: int, jm: Pointer, tm: SimpleEndpoint, task
             tasklist[taskid] = (0, task)
             # Increment the number of successfully generated tasks
             jm_counter_tasks_generated += 1
+            job.spits_set_metric_int("tasks_generated", jm_counter_tasks_generated)
             logging.debug(
                 'Generated task {} with payload size of {} bytes.'.format(taskid, len(task) if task is not None else 0))
         # else:
@@ -579,7 +581,7 @@ def push_tasks(job: JobBinary, runid: int, jm: Pointer, tm: SimpleEndpoint, task
             response = tm.ReadInt64(jm_recv_timeout)
             # Increment the sent tasks
             jm_counter_tasks_sent += 1
-            #job.spits_set_metric_int("tasks_sent", taskid)
+            job.spits_set_metric_int("tasks_sent", jm_counter_tasks_sent)
 
             # Task was sent, but the task manager is now full. Stop sending for a while...
             if response == messaging.msg_send_full:
@@ -655,16 +657,20 @@ def commit_tasks(job, runid, co, tm, tasklist, completed):
                 else:
                     logging.error('The task %d was not successfully executed, ' +
                                   'worker returned %d!', taskid, r)
+                job.spits_set_metric_int("results_error", co_counter_tasks_error)
 
             if taskrunid < runid:
                 logging.debug('The task %d is from the previous run %d ' +
                               'and will be ignored!', taskid, taskrunid)
                 co_counter_results_discarded += 1
+                job.spits_set_metric_int("results_discarded", results_discarded)
                 continue
 
             if taskrunid > runid:
                 logging.error('Received task %d from a future run %d!',
                               taskid, taskrunid)
+                co_counter_results_discarded += 1
+                job.spits_set_metric_int("results_discarded", results_discarded)
                 continue
 
             # Validated completed task
@@ -681,6 +687,7 @@ def commit_tasks(job, runid, co, tm, tasklist, completed):
                 # Removed the completed task from the tasklist
                 tasklist.pop(taskid, (None, None))
                 co_counter_results_discarded += 1
+                job.spits_set_metric_int("results_discarded", results_discarded)
                 continue
 
             # Remove it from the tasklist
@@ -697,8 +704,11 @@ def commit_tasks(job, runid, co, tm, tasklist, completed):
             if r2 != 0:
                 logging.error('The task %d was not successfully committed, ' +
                               'committer returned %d', taskid, r2)
+                co_counter_tasks_error += 1
+                job.spits_set_metric_int("results_error", co_counter_tasks_error)
             else:
                 co_counter_tasks_commited += 1
+                job.spits_set_metric_int("tasks_commited", co_counter_tasks_commited)
 
             # Add completed task to list
             completed[taskid] = (r, r2)
@@ -1096,9 +1106,9 @@ def run(argv, jobinfo, job, runid):
     logging.info("Starting job manager {} for job {}...".format(jm_name, runid))
     # Create the job manager from the job module
     jm = job.spits_job_manager_new(argv, jobinfo)
-    #job.spits_set_metric_int("created_time", int(time.time()))
     jmthread = threading.Thread(target=jobmanager, args=(argv, job, runid, jm, tasklist, completed))
     jmthread.start()
+    job.spits_set_metric_string("jm_start_time", datetime.datetime.now().strftime("%d-%m-%Y %H:%M:%S.%f"))
 
     # Start the committer
     logging.info('Starting committer for job {}...'.format(runid))
@@ -1106,6 +1116,7 @@ def run(argv, jobinfo, job, runid):
     co = job.spits_committer_new(argv, jobinfo)
     cothread = threading.Thread(target=committer, args=(argv, job, runid, co, tasklist, completed))
     cothread.start()
+    job.spits_set_metric_string("co_start_time", datetime.datetime.now().strftime("%d-%m-%Y %H:%M:%S.%f"))
 
     # Wait for both threads
     jmthread.join()
@@ -1167,7 +1178,8 @@ def main(argv):
 
     # Load the module
     module = args.margs[0]
-    job = JobBinary(module)
+    job = JobBinary(module, buffer_size=jm_spits_profile_buffer_size)
+
     # Create the metrics manager
     # job.spits_metric_new(jm_spits_profile_buffer_size)
 
@@ -1206,15 +1218,17 @@ def main(argv):
     spits_running = False
     server_listener.Stop()
 
-    # Destroy the metrics manager
-    # job.spits_metric_finish()
-
     # Kill the workers
     if jm_killtms:
         killtms()
 
     # Print final memory report
     memstat.stats()
+
+    # Print metrics
+    # metrics = job.spits_get_metrics_list()
+    # metric_history = job.spits_get_metrics_history([(m['name'], 10) for m in metrics])
+    # print(metric_history)
 
     # Finalize
     logging.debug('Bye!')

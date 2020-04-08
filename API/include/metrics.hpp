@@ -15,6 +15,7 @@
 #include <sstream>
 #include <cstring>
 #include <algorithm>
+#include <mutex>
 
 
 #ifndef DEFAULT_BUFFER_SIZE
@@ -155,6 +156,7 @@ class ring {
 private:
     T* m_data;
     int _head, _tail, _capacity, _size;
+    std::mutex __lock;
     
 public:
     explicit ring(int _capacity = 1) : 
@@ -174,14 +176,18 @@ public:
         delete[] m_data;
     }
 
-    void push(T element) 
+    bool push(T element) 
     {
+        const std::lock_guard<std::mutex> lock(this->__lock);
+        
         if (full()) 
             delete pop();
             
         m_data[_head] = element;
         _head = (_head+1)%_capacity;
         _size++;
+        
+        return true;
     }
     
     T pop(void) 
@@ -764,6 +770,8 @@ extern "C" void* spits_get_metrics_last_values(void* metrics, const char** metri
             m->delete_values_map(metrics_map);
             return NULL;
         }
+        
+        serial_stream << (int64_t) elements[0]->get_element_type();
 
         for (auto e : elements) 
         {
@@ -825,6 +833,7 @@ extern "C" void* spits_get_metrics_history(void* metrics, const char** metrics_l
             return NULL;
         }
 
+        serial_stream << (int64_t) elements[0]->get_element_type();
         serial_stream << (int64_t) elements[0]->get_element_sequence();
         serial_stream << (int64_t) elements.size();
 
