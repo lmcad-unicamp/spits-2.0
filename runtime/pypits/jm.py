@@ -283,13 +283,10 @@ def list_nodes(dirname: str = 'nodes') -> dict:
     """
     try:
         tms = load_tm_list_from_dir()
-        tms_dict_list = dict(nodes=[
-            {
+        tms_dict_list = dict(nodes=[{
                 "host": name,
-                "port": endpoint.port
-            }
-            for name, endpoint in tms
-        ])
+                "port": endpoint.port} 
+            for name, endpoint in tms])
         return tms_dict_list
     except:
         logging.error("Error listing nodes!")
@@ -1016,7 +1013,7 @@ def server_callback(conn, addr, port, job):
     :rtype:
     """
     global jm_recv_timeout
-    logging.warning('Connected to {}:{}.'.format(addr, port))
+    logging.debug('Connected to {}:{}.'.format(addr, port))
     # print('Connected to {}:{}.'.format(addr, port))
 
     try:
@@ -1024,40 +1021,21 @@ def server_callback(conn, addr, port, job):
 
         if mtype == messaging.msg_cd_query_state:
             state_json = dict(pid=os.getpid(), type="jobmanager", status="running")
-            message_json = json.dumps(state_json)
-            conn.WriteString(message_json if message_json is not None else "")
+            state_json = json.dumps(state_json)
+            conn.WriteString(state_json if state_json is not None else "")
 
         elif mtype == messaging.msg_cd_query_metrics_list:
             metrics_list = job.spits_get_metrics_list()
-            metrics_json = dict(metrics=[
-                    {
-                        "name": metric[0],
-                        "type": metric[2],
-                        "capacity": metric[1]
-                    } for metric in metrics_list
-                ]
-            )
-            message_json = json.dumps(metrics_json)
-            conn.WriteString(message_json if message_json is not None else "")
+            metrics_list = json.dumps(metrics_list)
+            conn.WriteString(metrics_list if metrics_list is not None else "")
 
         elif mtype == messaging.msg_cd_query_metrics_last_values:
             # Metrics list JSON. Format: {"metrics": [{"name": "metric1"}, {"name": "metric2"}, ...]}
             metrics_list = conn.ReadString(jm_recv_timeout)
             metrics_list = json.loads(metrics_list)
             metrics_last_values = job.spits_get_metrics_last_values([metric['name'] for metric in metrics_list['metrics']])
-            metrics_json = dict(metrics=[
-                    {
-                        "name": metric_value[0],
-                        "value": metric_value[1],
-                        "sec": metric_value[2],
-                        "nsec": metric_value[3],
-                        "seq": metric_value[4]
-                    } for metric_value in metrics_last_values
-                ]
-            )
-
-            message_json = json.dumps(metrics_json)
-            conn.WriteString(message_json if message_json is not None else "")
+            metrics_last_values = json.dumps(metrics_last_values)
+            conn.WriteString(metrics_last_values if metrics_last_values is not None else "")
 
         elif mtype == messaging.msg_cd_query_metrics_history:
             pass
@@ -1087,7 +1065,7 @@ def server_callback(conn, addr, port, job):
         logging.error(traceback.format_exc())
 
     conn.Close()
-    logging.warning('Connection to {}:{} closed.'.format(addr, port))
+    logging.debug('Connection to {}:{} closed.'.format(addr, port))
 
 
 ###############################################################################

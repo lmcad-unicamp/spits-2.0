@@ -497,7 +497,7 @@ class JobBinary(object):
             elif (metric_type == 3):
                 metric_type = 'string'
 
-            metrics.append(dict(name=metric_name, size=metric_size, type=metric_type))
+            metrics.append(dict(name=metric_name, capacity=metric_size, type=metric_type))
 
         self.spits_free_ptr(m_list)
         return metrics

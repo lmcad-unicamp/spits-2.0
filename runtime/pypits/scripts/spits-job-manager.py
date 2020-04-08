@@ -92,8 +92,8 @@ def main(argv):
 
     addr = make_uid()
     spits_uid = "{}".format(addr)
-    spits_output = "{}/logs/{}.out".format(expanded_dir, spits_uid)
-    spits_err = "{}/logs/{}.err".format(expanded_dir, spits_uid)
+    spits_output = "{}/logs/JM-{}.out".format(expanded_dir, spits_uid)
+    spits_err = "{}/logs/JM-{}.err".format(expanded_dir, spits_uid)
 
     signal.signal(signal.SIGINT, exit_gracefully)
     signal.signal(signal.SIGTERM, exit_gracefully)
@@ -106,7 +106,6 @@ def main(argv):
     run_args.append(jm_dir)
     run_args += args.jmargs
     run_args.append('--jobid={}'.format(args.jobid))
-    run_args.append('--uid={}'.format(spits_uid))
     run_args.append("--log={}".format(spits_err))
     run_args.append("--killtms=1")
     run_args.append("--announce=file")
@@ -114,8 +113,6 @@ def main(argv):
 
     with open(os.path.join(expanded_dir, 'finished'), 'w') as file:
         file.write('0')
-    with open(os.path.join(expanded_dir, 'jm.exists'), 'w') as file:
-        file.write(str(os.getpid()))
 
     print(
 """
@@ -131,6 +128,9 @@ Starting job manager for job {} with command: {}
         os.chdir(expanded_dir)
         process = subprocess.Popen(run_args, stdout=open(spits_output, 'w'))
         PID = process.pid
+        with open(os.path.join(expanded_dir, 'jm.exists'), 'w') as file:
+            file.write(str(process.pid))
+            
         process.wait()
         ret_val = process.returncode
     except BaseException as e:

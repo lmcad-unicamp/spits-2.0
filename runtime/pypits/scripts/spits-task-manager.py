@@ -86,8 +86,8 @@ def main(argv):
 
     addr = make_uid()
     spits_uid = "{}".format(addr)
-    spits_output = "{}/logs/{}.out".format(expanded_dir, spits_uid)
-    spits_err = "{}/logs/{}.err".format(expanded_dir, spits_uid)
+    spits_output = "{}/logs/TM-{}.out".format(expanded_dir, spits_uid)
+    spits_err = "{}/logs/TM-{}.err".format(expanded_dir, spits_uid)
 
     signal.signal(signal.SIGINT, exit_gracefully)
     signal.signal(signal.SIGTERM, exit_gracefully)
@@ -100,7 +100,6 @@ def main(argv):
     run_args.append(tm_dir)
     run_args += args.tmargs
     run_args.append('--jobid={}'.format(args.jobid))
-    run_args.append('--uid={}'.format(spits_uid))
     run_args.append("--log={}".format(spits_err))
     run_args.append("--announce=file")
     run_args += [x.strip() for x in job_cmd.split(' ')]
