@@ -83,7 +83,7 @@ def parse_global_config(argdict):
 
     tm_mode = argdict.get('tmmode', config.mode_tcp)
     tm_addr = argdict.get('tmaddr', '0.0.0.0')
-    tm_port = int(argdict.get('tmport', config.def_spits_tm_port))
+    tm_port = int(argdict.get('tmport', 0))
     tm_nw = int(argdict.get('nw', multiprocessing.cpu_count()))
     if tm_nw <= 0:
         tm_nw = multiprocessing.cpu_count()

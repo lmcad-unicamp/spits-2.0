@@ -53,7 +53,7 @@ jm_perf_subsamp = None  # Number of samples collected between report intervals
 jm_heartbeat_interval = None
 jm_jobid = None
 jm_name = None
-jm_port = config.def_spits_jm_port
+jm_port = None
 jm_working_dir = None
 
 # Job Manager Metrics
@@ -121,7 +121,7 @@ def parse_global_config(argdict: Args) -> None:
     jm_jobid = argdict.get('jobid', '')
     jm_name = argdict.get('jmname', 'JobManager-{}'.format(os.getpid()))
     jm_spits_profile_buffer_size = as_int(argdict.get('profile-buffer', 10))
-    jm_port = as_int(argdict.get('net-port', config.def_spits_jm_port))
+    jm_port = as_int(argdict.get('net-port', 0))
 
 
 ###############################################################################

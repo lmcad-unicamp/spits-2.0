@@ -37,7 +37,7 @@ class Args(object):
             # Split the argument
             j = arg.find('=')
             if j <= 2:
-                raise Exception()
+                raise Exception("Invaldid arg {}".format(arg))
             a = arg[2:j]
             v = arg[j+1:]
 
