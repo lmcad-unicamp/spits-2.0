@@ -67,13 +67,17 @@ def create_job_dir(job_dir: str, force: bool = False):
     print("OK");
     return True
 
-def copy_spits_files(job_dir: str, spits_bin: str):
+def copy_spits_files(job_dir: str, spits_bin: str, copy: bool):
     if not is_valid_spits_bin(spits_bin):
         print("Invalid SPITS binary: `{}`".format(spits_bin))
         return False
 
     try:
-        shutil.copy(spits_bin, os.path.join(job_dir, 'bin'))
+        if copy:
+            shutil.copy(spits_bin, os.path.join(job_dir, 'bin'))
+        else:
+            spits_bin = os.path.abspath(os.path.expandvars(os.path.expanduser(spits_bin)))
+            os.symlink(spits_bin, os.path.join(job_dir, 'bin', spits_bin.split('/')[-1]))
     except Exception as e:
         print(traceback.format_exc(), e)
         return False
@@ -96,9 +100,17 @@ def main(argv):
     
     parser.add_argument('--jobdir', '-j', action='store', 
         help='Default SPITS job directory to create jobs')
-    parser.add_argument('jobid', action='store', help='ID of the job to create')
-    parser.add_argument('filename', action='store', help='SPITS job file')
-    parser.add_argument('args', nargs='*', action='store', help='SPITS job arguments')
+    parser.add_argument('--no-binary', '-n', action='store_true', default=False,
+        help="Does not copy/link the binary. Create a job descriptor without it."
+        "The binary must later be copied/linked to job's bin path with the same name as filename parameter")
+    parser.add_argument('--copy', '-c', action='store_true', default=False,
+        help="Copy binary to the job's bin directory instead of link it")
+    parser.add_argument('jobid', action='store', 
+        help='ID of the job to create')
+    parser.add_argument('filename', action='store', 
+        help="SPITS binary to run")
+    parser.add_argument('args', nargs='*', action='store', 
+        help='SPITS binary arguments')
     
     args = parser.parse_args()
         
@@ -113,7 +125,7 @@ def main(argv):
     if not create_job_dir(expanded_dir, force=True):
         abort("Error creating job birectory at `{}` for job {}".format(args.jobdir, args.jobid))
 
-    if not copy_spits_files(expanded_dir, args.filename):
+    if not args.no_binary and not copy_spits_files(expanded_dir, args.filename, args.copy):
         abort("Error copying SPITS binary to job directory `{}`".format(args.jobdir))
     try:
         with open(os.path.join(expanded_dir, 'job'), 'w') as f:
