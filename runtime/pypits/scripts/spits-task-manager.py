@@ -2,9 +2,6 @@
 
 import sys
 import os
-import socket
-import contextlib
-import io
 import subprocess
 import signal
 import argparse
