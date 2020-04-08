@@ -26,7 +26,7 @@
 
 import ctypes, os, struct, sys, datetime
 
-from utils import Blob, Pointer
+from libspits import Blob, Pointer
 
 # TODO try-except around C calls
 

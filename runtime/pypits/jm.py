@@ -25,14 +25,14 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 # IN THE SOFTWARE.
 
-from utils import JobBinary, SimpleEndpoint
-from utils import messaging, config
-from utils import memstat
-from utils import make_uid
-from utils import log_lines
-from utils import PerfModule
-from utils import Listener
-from utils import Pointer
+from libspits import JobBinary, SimpleEndpoint
+from libspits import messaging, config
+from libspits import memstat
+from libspits import make_uid
+from libspits import log_lines
+from libspits import PerfModule
+from libspits import Listener
+from libspits import Pointer
 import Args
 import sys, threading, os, time, logging, struct, traceback, json, datetime
 
@@ -121,7 +121,7 @@ def parse_global_config(argdict: Args) -> None:
     jm_jobid = argdict.get('jobid', '')
     jm_name = argdict.get('jmname', 'JobManager-{}'.format(os.getpid()))
     jm_spits_profile_buffer_size = as_int(argdict.get('profile-buffer', 10))
-    jm_port = as_int(argdict.get('net-port', 0))
+    jm_port = as_int(argdict.get('jmport', config.def_spits_jm_port))
 
 
 ###############################################################################
@@ -1182,7 +1182,7 @@ def main(argv):
     threading.Thread(target=heartbeat_wrapper).start()
 
     # Start the server listener
-    server_listener = Listener(config.mode_tcp, '0.0.0.0', config.def_spits_jm_port, server_callback, (job,))
+    server_listener = Listener(config.mode_tcp, '0.0.0.0', jm_port, server_callback, (job,))
     server_listener.Start()
 
     # Run the module

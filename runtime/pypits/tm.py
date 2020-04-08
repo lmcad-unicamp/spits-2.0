@@ -25,13 +25,13 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 # IN THE SOFTWARE.
 
-from utils import JobBinary, SimpleEndpoint
-from utils import Listener, TaskPool
-from utils import messaging, config
-from utils import timeout as Timeout
-from utils import make_uid
-from utils import log_lines
-from utils import PerfModule
+from libspits import JobBinary, SimpleEndpoint
+from libspits import Listener, TaskPool
+from libspits import messaging, config
+from libspits import timeout as Timeout
+from libspits import make_uid
+from libspits import log_lines
+from libspits import PerfModule
 
 import Args
 import sys, os, socket, datetime, logging, multiprocessing, struct, time, traceback, json

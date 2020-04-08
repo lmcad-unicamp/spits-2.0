@@ -1,25 +1,11 @@
-from setuptools import setup, find_packages
+import setuptools
 
-setup (
-       name='spits-runtime',
-       version='2.0',
-       packages=find_packages(),
+setuptools.setup(
+    name="libspits",
+    version="0.0.1",
 
-       # Declare your packages' dependencies here, for eg:
-       install_requires=['foo>=3'],
+    description="libspits package",
+    packages=setuptools.find_packages(),
 
-       # Fill in these to make your Egg ready for upload to
-       # PyPI
-       author='',
-       author_email='',
-
-       #summary = 'Just another Python package for the cheese shop',
-       url='https://github.com/lmcad-unicamp/spits-2.0/',
-       license='MIT',
-       long_description='PYPITS 2.0: SPITS 2.0 runtime',
-
-       # could also include long_description, download_url, classifiers, etc.
-       scripts = [
-            'scripts/install.sh'
-       ]
+    python_requires='>=3.4',
 )

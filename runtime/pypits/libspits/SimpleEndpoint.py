@@ -24,20 +24,49 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS 
 # IN THE SOFTWARE.
 
-from .SimpleEndpoint import SimpleEndpoint
-from utils import messaging
+from .Endpoint import Endpoint
+from libspits import messaging
 
-import socket
+import socket, logging
 
-class ClientEndpoint(SimpleEndpoint):
-    """Message exchange class with a client"""
+class SimpleEndpoint(Endpoint):
+    """Simple message exchange class"""
 
-    def __init__(self, address, port, conn):
-        SimpleEndpoint.__init__(self, address, port)
-        self.socket = conn
+    def __init__(self, address, port):
+        self.address = address
+        self.port = port
+        self.socket = None
 
     def Open(self, timeout):
-        pass
+        if self.socket:
+            return
+
+        if self.port <= 0:
+            # Create an Unix Data Socket instead of a
+            # normal TCP socket
+            try:
+                socktype = socket.AF_UNIX
+            except AttributeError:
+                logging.error('The system does not support ' +
+                    'Unix Domain Sockets')
+                raise
+            sockaddr = self.address
+
+        else:
+            # Create a TCP socket
+            socktype = socket.AF_INET
+            sockaddr = (self.address, self.port)
+            # Validate address
+            try:
+                socket.gethostbyname_ex(self.address)
+            except:
+                logging.error('Could not resolve address for host ' + 
+                    self.address)
+                raise
+
+        self.socket = socket.socket(socktype, socket.SOCK_STREAM)
+        self.socket.settimeout(timeout)
+        self.socket.connect(sockaddr)
 
     def Read(self, size, timeout):
         return messaging.recv(self.socket, size, timeout)

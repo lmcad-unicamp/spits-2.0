@@ -31,8 +31,8 @@ import sys
 import threading
 import traceback
 
-from utils import ClientEndpoint
-from utils import config
+from libspits import ClientEndpoint
+from libspits import config
 
 
 class Listener(object):
