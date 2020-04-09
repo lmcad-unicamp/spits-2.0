@@ -5,6 +5,7 @@ import os
 import subprocess
 import signal
 import argparse
+import socket
 
 SPITS_JOB_DIR = None
 spits_uid = None
