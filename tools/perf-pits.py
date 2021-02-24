@@ -8,11 +8,7 @@ def loadFiles(fList):
   jobs = []
   for i in fList:
     # Create Job
-    if("SPITS" not in i):
-      print("Ignored:", i)
-      continue
-    job = {"Name" : i[i.index("SPITS"):], "Start Time" :"", "End Init. Time" :"", "Kill Time" :"", "Stats": "", "Threads" : {}}
-    jobs.append(job)
+    job = {"Name" : i, "Start Time" :"", "End Init. Time" :"", "Kill Time" :"", "Stats": "", "Threads" : {}}
 
     #  Parse Log
     try:
@@ -21,6 +17,10 @@ def loadFiles(fList):
       print(e)
       exit(1)
     
+    job["Kill Time"] = None
+    job["Start Time"] = None
+    job["Initializing"] = None
+
     for j in f:
       jVec = j.strip().split(" - ") # [0] = datetime, [1] thread, [2] log type, [3] message
       if(len(jVec) < 4):
@@ -39,6 +39,16 @@ def loadFiles(fList):
       elif("kill" in jVec[3]):
         job["Kill Time"] = time
     f.close()
+
+    # Handle TMs that were interrupted before receiving the kill signal.
+    if job["Kill Time"] == None :
+      job["Kill Time"] = time # Receive last time
+
+    if job["Start Time"] == None :
+      print("WARNING: Could not find the Start Time on log file \"{}\"".format(i))
+      print("It will not be included on the statistics...")
+    else:
+      jobs.append(job)
 
   return jobs
 
