@@ -81,7 +81,7 @@ co_counter_tasks_error = 0
 
 spits_running = True
 
-logger = get_logger(__name__)
+logger = get_logger(os.path.basename(sys.argv[0]))
 
 
 ###############################################################################
@@ -159,7 +159,6 @@ def parse_global_config(arguments):
                              "(default: %(default)s)")
 
     args = parser.parse_args(arguments)
-    print(f"ARGS: {args}")
     spits_binary = args.binary
     if not os.path.isfile(spits_binary):
         raise ValueError(f"Invalid spits binary at: {spits_binary}")
@@ -184,25 +183,6 @@ def parse_global_config(arguments):
     jm_name = args.name or f'Job-Manager-{str(uuid.uuid4()).replace("-", "")}'
     jm_spits_profile_buffer_size = args.metric_buffer
     jm_port = args.port
-
-    # jm_killtms = as_bool(argdict.get('killtms', True))
-    # jm_log_file = argdict.get('log', None)
-    # jm_working_dir = argdict.get('cwd', None)
-    # jm_verbosity = as_int(argdict.get('verbose', logging.INFO // 10)) * 10
-    # jm_heart_timeout = as_float(argdict.get('htimeout', config.def_heart_timeout))
-    # jm_conn_timeout = as_float(argdict.get('ctimeout', config.def_connection_timeout))
-    # jm_recv_timeout = as_float(argdict.get('rtimeout', config.def_receive_timeout))
-    # jm_send_timeout = as_float(argdict.get('stimeout', config.def_send_timeout))
-    # jm_recv_backoff = as_float(argdict.get('rbackoff', config.recv_backoff))
-    # jm_send_backoff = as_float(argdict.get('sbackoff', config.send_backoff))
-    # jm_memstat = as_int(argdict.get('memstat', 0))
-    # jm_profiling = as_int(argdict.get('profiling', 0))
-    # jm_perf_rinterv = as_int(argdict.get('rinterv', 60))
-    # jm_perf_subsamp = as_int(argdict.get('subsamp', 12))
-    # jm_jobid = argdict.get('jobid', '')
-    # jm_name = argdict.get('jmname', 'JobManager-{}'.format(os.getpid()))
-    # jm_spits_profile_buffer_size = as_int(argdict.get('profile-buffer', 10))
-    # jm_port = as_int(argdict.get('jmport', config.def_spits_jm_port))
 
 
 ###############################################################################

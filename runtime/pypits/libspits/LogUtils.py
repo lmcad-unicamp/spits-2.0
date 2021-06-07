@@ -27,7 +27,7 @@ import coloredlogs
 
 
 def get_logger(name):
-    return logging.getLogger()
+    return logging.getLogger(name)
 
 
 def setup_log(verbosity_level: int = 0, filename: str = None):
@@ -41,7 +41,6 @@ def setup_log(verbosity_level: int = 0, filename: str = None):
     else:
         log_level = logging.DEBUG
 
-    print(f"Log leve: {log_level}")
     if filename:
         logging.basicConfig(
             filename=filename, filemode='w', level=log_level, format=formatter)
