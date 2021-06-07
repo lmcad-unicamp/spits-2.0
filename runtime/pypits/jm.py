@@ -25,22 +25,31 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 # IN THE SOFTWARE.
 
-from libspits import JobBinary, SimpleEndpoint
-from libspits import messaging, config
-from libspits import memstat
-from libspits import make_uid
-from libspits import log_lines
-from libspits import PerfModule
+import datetime
+import json
+import logging
+import os
+import sys
+import threading
+import time
+import traceback
+import argparse
+import uuid
+
+from libspits import JobBinary, SimpleEndpoint, get_logger, setup_log
 from libspits import Listener
+from libspits import PerfModule
 from libspits import Pointer
-import Args
-import sys, threading, os, time, logging, struct, traceback, json, datetime
+from libspits import log_lines
+from libspits import make_uid
+from libspits import memstat
+from libspits import messaging, config
 
 # Global configuration parameters
-jm_killtms = None  # Kill task managers after execution
-jm_log_file = None  # Output file for logging
-jm_verbosity = None  # Verbosity level for logging
-jm_heart_timeout = None  # Timeout for heartbeat response
+jm_killtms = None       # Kill task managers after execution
+jm_log_file = None      # Output file for logging
+jm_verbosity = 0        # Verbosity level for logging
+jm_heart_timeout = None # Timeout for heartbeat response
 jm_conn_timeout = None  # Socket connect timeout
 jm_recv_timeout = None  # Socket receive timeout
 jm_send_timeout = None  # Socket send timeout
@@ -50,11 +59,12 @@ jm_memstat = None  # 1 to display memory statistics
 jm_profiling = None  # 1 to enable profiling
 jm_perf_rinterv = None  # Profiling report interval (seconds)
 jm_perf_subsamp = None  # Number of samples collected between report intervals
-jm_heartbeat_interval = None
 jm_jobid = None
 jm_name = None
-jm_port = None
+jm_port = 0
 jm_working_dir = None
+spits_binary = ''
+spits_binary_args = []
 
 # Job Manager Metrics
 jm_spits_profile_buffer_size = None  # Circular Buffer size for the spits application
@@ -71,75 +81,128 @@ co_counter_tasks_error = 0
 
 spits_running = True
 
+logger = get_logger(__name__)
+
 
 ###############################################################################
 # Parse global configuration
 ###############################################################################
-def parse_global_config(argdict: Args) -> None:
+def parse_global_config(arguments):
     """ Parse the command-line arguments to global variables
-
-    :param argdict: Arguments dictionary
-    :type argdict: Args
     """
-
     global jm_killtms, jm_log_file, jm_verbosity, jm_heart_timeout, \
         jm_conn_timeout, jm_recv_timeout, jm_send_timeout, jm_send_backoff, \
         jm_recv_backoff, jm_memstat, jm_profiling, jm_perf_rinterv, \
-        jm_perf_subsamp, jm_heartbeat_interval, jm_jobid, \
-        jm_spits_profile_buffer_size, jm_name, jm_port, jm_working_dir
+        jm_perf_subsamp, jm_jobid, \
+        jm_spits_profile_buffer_size, jm_name, jm_port, jm_working_dir, \
+        spits_binary, spits_binary_args
 
-    def as_int(v):
-        if v is None:
-            return None
-        return int(v)
+    parser = argparse.ArgumentParser(description="SPITS Job Manager runtime")
+    parser.add_argument('binary', metavar='PATH', type=str,
+                        help='Path to the SPITS binary')
+    parser.add_argument('binary_args', metavar='ARGS', type=str,
+                        nargs=argparse.REMAINDER,
+                        help='SPITS binary arguments')
+    parser.add_argument('--killtms', action='store_true', default=False,
+                        help="Kill active task managers when job manager exits "
+                             "(default: %(default)s)")
+    parser.add_argument('--log', action='store', type=str, metavar='PATH',
+                        help="Redirect log messages to a file")
+    parser.add_argument('--cwd', action='store', type=str, metavar='PATH',
+                        help="Set the current working directory for the binary")
+    parser.add_argument('--verbose', action='store', metavar='LEVEL',
+                        type=int, default=config.def_verbosity,
+                        help="Verbosity level (default: %(default)s)")
+    parser.add_argument('--htimeout', action='store', metavar='TIME',
+                        type=int, default=config.def_heart_timeout,
+                        help="Timeout for heartbeat response "
+                             "(default: %(default)s)")
+    parser.add_argument('--ctimeout', action='store', metavar='TIME',
+                        type=int, default=config.def_connection_timeout,
+                        help="Socket connect timeout (default: %(default)s)")
+    parser.add_argument('--rtimeout', action='store', metavar='TIME',
+                        type=int, default=config.def_receive_timeout,
+                        help="Socket receive timeout (default: %(default)s)")
+    parser.add_argument('--stimeout', action='store', metavar='TIME',
+                        type=int, default=config.def_send_timeout,
+                        help="Socket send timeout (default: %(default)s)")
+    parser.add_argument('--rbackoff', action='store', metavar='TIME',
+                        type=int, default=config.recv_backoff,
+                        help="Job Manager delay between receiving tasks "
+                             "(default: %(default)s)")
+    parser.add_argument('--sbackoff', action='store', metavar='TIME',
+                        type=int, default=config.send_backoff,
+                        help="Job Manager delay between sending tasks "
+                             "(default: %(default)s)")
+    parser.add_argument('--memstat', action='store_true', default=False,
+                        help="Display memory statistics (default: %(default)s)")
+    parser.add_argument('--profile', action='store_true', default=False,
+                        help="Enable job manager profiling (default: %(default)s)")
+    parser.add_argument('--perf-interval', action='store', metavar='TIME',
+                        type=int, default=60,
+                        help="Profiling report interval (in seconds) "
+                             "(default: %(default)s)")
+    parser.add_argument('--perf-subsamp', action='store', metavar='TIME',
+                        type=int, default=12,
+                        help="Number of samples collected between report "
+                             "intervals (default: %(default)s)")
+    parser.add_argument('--jobid', action='store', metavar='ID',
+                        type=str, default='', help="ID of the job")
+    parser.add_argument('--name', action='store', type=str, default='',
+                        help="Name for the Job Manager")
+    parser.add_argument('--metric-buffer', action='store', type=int, default=10,
+                        help="Number of elements for each metric buffer "
+                             "(default: %(default)s)")
+    parser.add_argument('--port', action='store', type=int,
+                        default=config.def_spits_jm_port,
+                        help="Job manager port to that socket will listen to "
+                             "(default: %(default)s)")
 
-    def as_float(v):
-        if v is None:
-            return None
-        return int(v)
+    args = parser.parse_args(arguments)
+    print(f"ARGS: {args}")
+    spits_binary = args.binary
+    if not os.path.isfile(spits_binary):
+        raise ValueError(f"Invalid spits binary at: {spits_binary}")
+    spits_binary_args = args.binary_args
+    jm_killtms = args.killtms
+    jm_log_file = args.log
+    jm_working_dir = args.cwd
+    if jm_working_dir is not None and not os.path.isdir(jm_working_dir):
+        raise ValueError(f"Invalid working directory: {jm_working_dir}")
+    jm_verbosity = args.verbose
+    jm_heart_timeout = args.htimeout
+    jm_conn_timeout = args.ctimeout
+    jm_recv_timeout = args.rtimeout
+    jm_send_timeout = args.stimeout
+    jm_recv_backoff = args.rbackoff
+    jm_send_backoff = args.sbackoff
+    jm_memstat = args.memstat
+    jm_profiling = args.profile
+    jm_perf_rinterv = args.perf_interval
+    jm_perf_subsamp = args.perf_subsamp
+    jm_jobid = args.jobid
+    jm_name = args.name or f'Job-Manager-{str(uuid.uuid4()).replace("-", "")}'
+    jm_spits_profile_buffer_size = args.metric_buffer
+    jm_port = args.port
 
-    def as_bool(v):
-        if v is None:
-            return None
-        return bool(v)
-
-    jm_killtms = as_bool(argdict.get('killtms', True))
-    jm_log_file = argdict.get('log', None)
-    jm_working_dir = argdict.get('cwd', None)
-    jm_verbosity = as_int(argdict.get('verbose', logging.INFO // 10)) * 10
-    jm_heart_timeout = as_float(argdict.get('htimeout', config.def_heart_timeout))
-    jm_conn_timeout = as_float(argdict.get('ctimeout', config.def_connection_timeout))
-    jm_recv_timeout = as_float(argdict.get('rtimeout', config.def_receive_timeout))
-    jm_send_timeout = as_float(argdict.get('stimeout', config.def_send_timeout))
-    jm_recv_backoff = as_float(argdict.get('rbackoff', config.recv_backoff))
-    jm_send_backoff = as_float(argdict.get('sbackoff', config.send_backoff))
-    jm_memstat = as_int(argdict.get('memstat', 0))
-    jm_profiling = as_int(argdict.get('profiling', 0))
-    jm_perf_rinterv = as_int(argdict.get('rinterv', 60))
-    jm_perf_subsamp = as_int(argdict.get('subsamp', 12))
-    jm_heartbeat_interval = as_float(argdict.get('heartbeat-interval', 10))
-    jm_jobid = argdict.get('jobid', '')
-    jm_name = argdict.get('jmname', 'JobManager-{}'.format(os.getpid()))
-    jm_spits_profile_buffer_size = as_int(argdict.get('profile-buffer', 10))
-    jm_port = as_int(argdict.get('jmport', config.def_spits_jm_port))
-
-
-###############################################################################
-# Configure the log output format
-###############################################################################
-def setup_log():
-    """ Setup the log handler
-    """
-    global jm_log_file, jm_verbosity
-
-    root = logging.getLogger()
-    root.setLevel(jm_verbosity)
-    root.handlers = []
-    ch = logging.StreamHandler(sys.stderr if jm_log_file is None else open(jm_log_file, 'wt'))
-    ch.setLevel(logging.DEBUG)
-    formatter = logging.Formatter('%(asctime)s - %(threadName)s - %(levelname)s - %(message)s')
-    ch.setFormatter(formatter)
-    root.addHandler(ch)
+    # jm_killtms = as_bool(argdict.get('killtms', True))
+    # jm_log_file = argdict.get('log', None)
+    # jm_working_dir = argdict.get('cwd', None)
+    # jm_verbosity = as_int(argdict.get('verbose', logging.INFO // 10)) * 10
+    # jm_heart_timeout = as_float(argdict.get('htimeout', config.def_heart_timeout))
+    # jm_conn_timeout = as_float(argdict.get('ctimeout', config.def_connection_timeout))
+    # jm_recv_timeout = as_float(argdict.get('rtimeout', config.def_receive_timeout))
+    # jm_send_timeout = as_float(argdict.get('stimeout', config.def_send_timeout))
+    # jm_recv_backoff = as_float(argdict.get('rbackoff', config.recv_backoff))
+    # jm_send_backoff = as_float(argdict.get('sbackoff', config.send_backoff))
+    # jm_memstat = as_int(argdict.get('memstat', 0))
+    # jm_profiling = as_int(argdict.get('profiling', 0))
+    # jm_perf_rinterv = as_int(argdict.get('rinterv', 60))
+    # jm_perf_subsamp = as_int(argdict.get('subsamp', 12))
+    # jm_jobid = argdict.get('jobid', '')
+    # jm_name = argdict.get('jmname', 'JobManager-{}'.format(os.getpid()))
+    # jm_spits_profile_buffer_size = as_int(argdict.get('profile-buffer', 10))
+    # jm_port = as_int(argdict.get('jmport', config.def_spits_jm_port))
 
 
 ###############################################################################
@@ -154,7 +217,7 @@ def abort(error: str) -> None:
     global spits_running
 
     spits_running = False
-    logging.critical(error)
+    logger.critical(error)
     exit(1)
 
 
@@ -173,7 +236,7 @@ def parse_proxy(proxy_string: str) -> dict:
     if len(proxy_string) != 3:
         raise Exception('Invalid proxy string {}'.format(proxy_string))
 
-    logging.debug('Proxy {}'.format(proxy_string[1]))
+    logger.debug('Proxy {}'.format(proxy_string[1]))
     name = proxy_string[1]
     gate = proxy_string[2].split(':')
     protocol = gate[0]
@@ -199,7 +262,7 @@ def parse_node(node_string: str, proxies: list) -> tuple:
     if len(nodes_commands) < 2:
         raise Exception("Invalid node {}".format(node_string))
 
-    logging.debug('Node {}'.format(nodes_commands[1]))
+    logger.debug('Node {}'.format(nodes_commands[1]))
     name = nodes_commands[1]
     addr = nodes_commands[1].split(':')[0]
     port = int(nodes_commands[1].split(':')[1])
@@ -243,8 +306,8 @@ def add_node(ipaddr: str, port: int, dirname: str = 'nodes') -> bool:
             f.write("node {}:{}".format(ipaddr, port))
         return True
     except:
-        logging.error("Error adding node to file {}-{} from {}".format(ipaddr, port, dirname))
-        logging.error(traceback.format_exc())
+        logger.error("Error adding node to file {}-{} from {}".format(ipaddr, port, dirname))
+        logger.error(traceback.format_exc())
 
     return False
 
@@ -267,8 +330,8 @@ def remove_node(ipaddr: str, port: int, dirname: str = 'nodes') -> bool:
         return True
 
     except:
-        logging.error("Error removing node from file {}-{} in directory {}".format(ipaddr, port, dirname))
-        logging.error(traceback.format_exc())
+        logger.error("Error removing node from file {}-{} in directory {}".format(ipaddr, port, dirname))
+        logger.error(traceback.format_exc())
 
     return False
 
@@ -285,12 +348,12 @@ def list_nodes(dirname: str = 'nodes') -> dict:
         tms = load_tm_list_from_dir()
         tms_dict_list = dict(nodes=[{
                 "host": name,
-                "port": endpoint.port} 
+                "port": endpoint.port}
             for name, endpoint in tms])
         return tms_dict_list
     except:
-        logging.error("Error listing nodes!")
-        logging.error(traceback.format_exc())
+        logger.error("Error listing nodes!")
+        logger.error(traceback.format_exc())
 
     return {}
 
@@ -310,7 +373,7 @@ def load_tm_list_from_file(filename: str = None) -> dict:
     # Override the filename if it is empty
     if filename is None:
         filename = os.path.join('.', 'nodes.txt')
-    logging.debug('Loading task manager list from file {}...'.format(filename))
+    logger.debug('Loading task manager list from file {}...'.format(filename))
     tms = {}
 
     # Read all lines
@@ -323,7 +386,7 @@ def load_tm_list_from_file(filename: str = None) -> dict:
         tms = {name: endpoint for name, endpoint in tms_list if name is not None}
 
     except:
-        logging.warning('Error loading the list of task managers from the file {}'.format(filename))
+        logger.warning('Error loading the list of task managers from the file {}'.format(filename))
 
     return tms
 
@@ -340,7 +403,7 @@ def load_tm_list_from_dir(dirname: str = 'nodes') -> dict:
     :rtype: dict
     """
 
-    logging.debug('Loading task manager list from directory {}...'.format(dirname))
+    logger.debug('Loading task manager list from directory {}...'.format(dirname))
     tms = {}
     # Read all files
     try:
@@ -350,7 +413,7 @@ def load_tm_list_from_dir(dirname: str = 'nodes') -> dict:
                 continue
             tms.update(load_tm_list_from_file(f))
     except:
-        logging.warning('Error loading the list of task managers from the directory {}'.format(dirname))
+        logger.warning('Error loading the list of task managers from the directory {}'.format(dirname))
         return {}
 
     return tms
@@ -367,7 +430,7 @@ def load_tm_list():
     """
     tms = load_tm_list_from_file()
     tms.update(load_tm_list_from_dir())
-    logging.debug('Loaded {} task manager nodes.'.format(len(tms)))
+    logger.debug('Loaded {} task manager nodes.'.format(len(tms)))
     return tms
 
 
@@ -393,7 +456,7 @@ def setup_endpoint_for_pushing(e: SimpleEndpoint) -> bool:
     except:
         # Problem connecting to the task manager.
         # Because this is a connection event. Make it a debug rather than a warning
-        logging.debug('Error connecting to task manager at {}:{}!'.format(e.address, e.port))
+        logger.debug('Error connecting to task manager at {}:{}!'.format(e.address, e.port))
         log_lines(traceback.format_exc(), logging.debug)
         e.Close()
         return False
@@ -404,7 +467,7 @@ def setup_endpoint_for_pushing(e: SimpleEndpoint) -> bool:
         received_jobid = e.ReadString(jm_recv_timeout)
 
         if jm_jobid != received_jobid:
-            logging.error('Job Id mismatch from {}:{}! Self: {}, task manager: {}!'.format(
+            logger.error('Job Id mismatch from {}:{}! Self: {}, task manager: {}!'.format(
                 e.address, e.port, jm_jobid, received_jobid))
             e.Close()
             return False
@@ -416,7 +479,7 @@ def setup_endpoint_for_pushing(e: SimpleEndpoint) -> bool:
 
         # Task mananger is full
         if response == messaging.msg_send_full:
-            logging.debug('Task manager at {}:{} is full.'.format(e.address, e.port))
+            logger.debug('Task manager at {}:{} is full.'.format(e.address, e.port))
 
         # Task Manager is not full, continue to push tasks to the TM
         elif response == messaging.msg_send_more:
@@ -424,11 +487,11 @@ def setup_endpoint_for_pushing(e: SimpleEndpoint) -> bool:
 
         # The task manager is not replying as expected
         else:
-            logging.error('Unknown response from the task manager!')
+            logger.error('Unknown response from the task manager!')
 
     except:
         # Problem connecting to the task manager
-        logging.warning('Error connecting to task manager at {}:{}!'.format(e.address, e.port))
+        logger.warning('Error connecting to task manager at {}:{}!'.format(e.address, e.port))
         log_lines(traceback.format_exc(), logging.debug)
 
     e.Close()
@@ -457,7 +520,7 @@ def setup_endpoint_for_pulling(e: SimpleEndpoint) -> bool:
         # Problem connecting to the task manager
         # Because this is a connection event,
         # make it a debug rather than a warning
-        logging.debug('Error connecting to task manager at {}:{}!'.format(e.address, e.port))
+        logger.debug('Error connecting to task manager at {}:{}!'.format(e.address, e.port))
         log_lines(traceback.format_exc(), logging.debug)
         e.Close()
         return False
@@ -470,7 +533,7 @@ def setup_endpoint_for_pulling(e: SimpleEndpoint) -> bool:
         jobid = e.ReadString(jm_recv_timeout)
 
         if jm_jobid != jobid:
-            logging.error('Job Id mismatch from {}:{}! Self: {}, task manager: {}!'.format(
+            logger.error('Job Id mismatch from {}:{}! Self: {}, task manager: {}!'.format(
                 e.address, e.port, jm_jobid, jobid))
             e.Close()
             return False
@@ -481,7 +544,7 @@ def setup_endpoint_for_pulling(e: SimpleEndpoint) -> bool:
 
     except:
         # Problem connecting to the task manager
-        logging.warning('Error connecting to task manager at {}:{}!'.format(e.address, e.port))
+        logger.warning('Error connecting to task manager at {}:{}!'.format(e.address, e.port))
         log_lines(traceback.format_exc(), logging.debug)
 
     e.Close()
@@ -528,7 +591,7 @@ def push_tasks(job: JobBinary, runid: int, jm: Pointer, tm: SimpleEndpoint, task
         if task is None:
             # Avoid calling next_task after it's finished
             if completed:
-                logging.debug('There are no new tasks to generate.')
+                logger.debug('There are no new tasks to generate.')
                 return True, 0, None, sent
 
             # Only get a task if the last one was already sent.
@@ -542,11 +605,11 @@ def push_tasks(job: JobBinary, runid: int, jm: Pointer, tm: SimpleEndpoint, task
 
             # Error generating task, return the context
             if newtask is None:
-                logging.error('Task {} was not pushed!'.format(newtaskid))
+                logger.error('Task {} was not pushed!'.format(newtaskid))
                 return False, taskid, task, sent
 
             if ctx != newtaskid:
-                logging.error('Context verification failed for task {}!'.format(newtaskid))
+                logger.error('Context verification failed for task {}!'.format(newtaskid))
                 return False, taskid, task, sent
 
             taskid = newtaskid
@@ -557,13 +620,13 @@ def push_tasks(job: JobBinary, runid: int, jm: Pointer, tm: SimpleEndpoint, task
             # Increment the number of successfully generated tasks
             jm_counter_tasks_generated += 1
             job.spits_set_metric_int("tasks_generated", jm_counter_tasks_generated)
-            logging.debug(
+            logger.debug(
                 'Generated task {} with payload size of {} bytes.'.format(taskid, len(task) if task is not None else 0))
         # else:
         #    duplicated = True
 
         try:
-            logging.debug('Pushing task {} to the Task Manager at {}:{}..'.format(taskid, tm.address, tm.port))
+            logger.debug('Pushing task {} to the Task Manager at {}:{}..'.format(taskid, tm.address, tm.port))
 
             # Send the task to the active task manager. Send (taskid, runid, tasksize, task)
             tm.WriteInt64(taskid)
@@ -597,17 +660,17 @@ def push_tasks(job: JobBinary, runid: int, jm: Pointer, tm: SimpleEndpoint, task
             # predicted for a model where just one task manager
             # pushes tasks, exit the task loop
             elif response == messaging.msg_send_rjct:
-                logging.warning('Task manager at {}:{} rejected task {}'.format(tm.address, tm.port, taskid))
+                logger.warning('Task manager at {}:{} rejected task {}'.format(tm.address, tm.port, taskid))
                 break
 
             # The task manager is not replying as expected
             else:
-                logging.error('Unknown response from the task manager!')
+                logger.error('Unknown response from the task manager!')
                 break
         except:
             # Something went wrong with the connection,
             # try with another task manager
-            logging.error('Error pushing tasks to task manager at {}:{}!'.format(tm.address, tm.port))
+            logger.error('Error pushing tasks to task manager at {}:{}!'.format(tm.address, tm.port))
             log_lines(traceback.format_exc(), logging.debug)
             break
 
@@ -649,25 +712,25 @@ def commit_tasks(job, runid, co, tm, tasklist, completed):
                 n_errors += 1
                 co_counter_tasks_error += 1
                 if r == messaging.res_module_error:
-                    logging.error('the remote worker crashed while ' +
+                    logger.error('the remote worker crashed while ' +
                                   'executing task %d!', r)
                 else:
-                    logging.error('The task %d was not successfully executed, ' +
+                    logger.error('The task %d was not successfully executed, ' +
                                   'worker returned %d!', taskid, r)
                 job.spits_set_metric_int("results_error", co_counter_tasks_error)
 
             if taskrunid < runid:
-                logging.debug('The task %d is from the previous run %d ' +
+                logger.debug('The task %d is from the previous run %d ' +
                               'and will be ignored!', taskid, taskrunid)
                 co_counter_results_discarded += 1
-                job.spits_set_metric_int("results_discarded", results_discarded)
+                job.spits_set_metric_int("results_discarded", co_counter_results_discarded)
                 continue
 
             if taskrunid > runid:
-                logging.error('Received task %d from a future run %d!',
+                logger.error('Received task %d from a future run %d!',
                               taskid, taskrunid)
                 co_counter_results_discarded += 1
-                job.spits_set_metric_int("results_discarded", results_discarded)
+                job.spits_set_metric_int("results_discarded", co_counter_results_discarded)
                 continue
 
             # Validated completed task
@@ -678,13 +741,13 @@ def commit_tasks(job, runid, co, tm, tasklist, completed):
                 # lead to tasks being put in the tasklist by the job manager
                 # while being committed. The tasklist must be constantly
                 # sanitized.
-                logging.warning('The task %d was received more than once ' +
+                logger.warning('The task %d was received more than once ' +
                                 'and will not be committed again!',
                                 taskid)
                 # Removed the completed task from the tasklist
                 tasklist.pop(taskid, (None, None))
                 co_counter_results_discarded += 1
-                job.spits_set_metric_int("results_discarded", results_discarded)
+                job.spits_set_metric_int("results_discarded", co_counter_results_discarded)
                 continue
 
             # Remove it from the tasklist
@@ -693,13 +756,13 @@ def commit_tasks(job, runid, co, tm, tasklist, completed):
             if p[0] == None and c[0] == None:
                 # The task was not already completed and was not scheduled
                 # to be executed, this is serious problem!
-                logging.error('The task %d was not in the working list!',
+                logger.error('The task %d was not in the working list!',
                               taskid)
 
             r2 = job.spits_committer_commit_pit(co, res)
 
             if r2 != 0:
-                logging.error('The task %d was not successfully committed, ' +
+                logger.error('The task %d was not successfully committed, ' +
                               'committer returned %d', taskid, r2)
                 co_counter_tasks_error += 1
                 job.spits_set_metric_int("results_error", co_counter_tasks_error)
@@ -715,7 +778,7 @@ def commit_tasks(job, runid, co, tm, tasklist, completed):
             # try with another task manager
             break
     if n_errors > 0:
-        logging.warning('There were %d failed tasks' % (n_errors,))
+        logger.warning('There were %d failed tasks' % (n_errors,))
 
 
 def infinite_tmlist_generator():
@@ -744,10 +807,10 @@ def infinite_tmlist_generator():
             if len(newtmlist) > 0:
                 tmlist = newtmlist
             elif len(tmlist) > 0:
-                logging.warning('New list of task managers is empty and will not be updated!')
+                logger.warning('New list of task managers is empty and will not be updated!')
         except:
             if len(tmlist) > 0:
-                logging.warning('New list of task managers is empty and will not be updated!')
+                logger.warning('New list of task managers is empty and will not be updated!')
         for name, tm in tmlist.items():
             yield False, name, tm
         yield True, None, None
@@ -757,17 +820,17 @@ def infinite_tmlist_generator():
 # Heartbeat routine
 ###############################################################################
 def heartbeat(finished):
-    global jm_heartbeat_interval
-    t_last = time.clock()
+    global jm_heart_timeout
+    t_last = time.time()
     for isEnd, name, tm in infinite_tmlist_generator():
         if finished[0]:
-            logging.debug('Stopping heartbeat thread...')
+            logger.debug('Stopping heartbeat thread...')
             return
         if isEnd:
-            t_curr = time.clock()
+            t_curr = time.time()
             elapsed = t_curr - t_last
             t_last = t_curr
-            sleep_for = max(jm_heartbeat_interval - elapsed, 0)
+            sleep_for = max(jm_heart_timeout - elapsed, 0)
             time.sleep(sleep_for)
         else:
             try:
@@ -776,7 +839,7 @@ def heartbeat(finished):
                 # Problem connecting to the task manager
                 # Because this is a connection event,
                 # make it a debug rather than a warning
-                logging.debug('Error connecting to task manager at {}:{}!'.format(tm.address, tm.port))
+                logger.debug('Error connecting to task manager at {}:{}!'.format(tm.address, tm.port))
                 log_lines(traceback.format_exc(), logging.debug)
                 tm.Close()
                 continue
@@ -788,7 +851,7 @@ def heartbeat(finished):
                 jobid = tm.ReadString(jm_recv_timeout)
 
                 if jm_jobid != jobid:
-                    logging.error('Job Id mismatch from {}:{}! Self: {}, task manager: {}!'.format(
+                    logger.error('Job Id mismatch from {}:{}! Self: {}, task manager: {}!'.format(
                         tm.address, tm.port, jm_jobid, jobid))
                     tm.Close()
                     continue
@@ -796,7 +859,7 @@ def heartbeat(finished):
                 # Send the heartbeat
                 tm.WriteInt64(messaging.msg_send_heart)
             except:
-                logging.warning('Error connecting to task manager at {}:{}!'.format(tm.address, tm.port))
+                logger.warning('Error connecting to task manager at {}:{}!'.format(tm.address, tm.port))
                 log_lines(traceback.format_exc(), logging.debug)
             finally:
                 tm.Close()
@@ -825,7 +888,7 @@ def jobmanager(argv: list, job: JobBinary, runid: int, jm: Pointer, tasklist: di
     """
     global jm_send_backoff, spits_running
 
-    logging.info('Job manager running...')
+    logger.info('Job manager running...')
     memstat.stats()
 
     # Load the list of nodes to connect to
@@ -846,22 +909,22 @@ def jobmanager(argv: list, job: JobBinary, runid: int, jm: Pointer, tasklist: di
             if len(newtmlist) > 0:
                 tmlist = newtmlist
             elif len(tmlist) > 0:
-                logging.warning('New list of task managers is empty and will not be updated!')
+                logger.warning('New list of task managers is empty and will not be updated!')
         except:
-            logging.error('Failed parsing task manager list!')
-            logging.error(traceback.format_exc())
+            logger.error('Failed parsing task manager list!')
+            logger.error(traceback.format_exc())
 
         # (name, SimpleEndPoint)
         # Push tasks to each Task Manager until its full
         for name, tm in tmlist.items():
-            logging.debug('Connecting to {}:{}...'.format(tm.address, tm.port))
+            logger.debug('Connecting to {}:{}...'.format(tm.address, tm.port))
 
             # Open the connection to the task manager and query if it is
             # possible to send data
             if not setup_endpoint_for_pushing(tm):
                 finished = False
             else:
-                logging.debug('Pushing tasks to {}:{}...'.format(tm.address, tm.port))
+                logger.debug('Pushing tasks to {}:{}...'.format(tm.address, tm.port))
 
                 # Task pushing loop. Send tasks to the task manager until its full
                 memstat.stats()
@@ -873,16 +936,16 @@ def jobmanager(argv: list, job: JobBinary, runid: int, jm: Pointer, tasklist: di
                 # Close the connection with the task manager
                 tm.Close()
 
-                logging.debug('Finished pushing tasks to {}:{}. Sent {} tasks'.format(tm.address, tm.port, len(sent)))
+                logger.debug('Finished pushing tasks to {}:{}. Sent {} tasks'.format(tm.address, tm.port, len(sent)))
 
             if finished and completed[0] == 0:
                 # Tell everyone the task generation was completed
-                logging.info('All tasks generated.')
+                logger.info('All tasks generated.')
                 completed[0] = 1
 
             # Exit the job manager when done
             if len(tasklist) == 0 and completed[0] == 1:
-                logging.debug('Job manager exiting...')
+                logger.debug('Job manager exiting...')
                 return
 
             # Keep sending the uncommitted tasks
@@ -890,7 +953,7 @@ def jobmanager(argv: list, job: JobBinary, runid: int, jm: Pointer, tasklist: di
             # with repeated tasks
             if finished and len(tasklist) > 0:
                 if len(submissions) == 0:
-                    logging.critical('The submission list is empty but the task list is not! Some tasks were lost!')
+                    logger.critical('The submission list is empty but the task list is not! Some tasks were lost!')
 
                 # Select the oldest task that is not already completed
                 while True:
@@ -902,7 +965,7 @@ def jobmanager(argv: list, job: JobBinary, runid: int, jm: Pointer, tasklist: di
         submissions = [x for x in submissions if x[0] in tasklist]
         time.sleep(jm_send_backoff)
 
-    logging.info("Shutting down JobManager..")
+    logger.info("Shutting down JobManager..")
 
 
 ###############################################################################
@@ -910,7 +973,7 @@ def jobmanager(argv: list, job: JobBinary, runid: int, jm: Pointer, tasklist: di
 ###############################################################################
 def committer(argv, job, runid, co, tasklist, completed):
     global spits_running
-    logging.info('Committer running...')
+    logger.info('Committer running...')
     memstat.stats()
 
     # Load the list of nodes to connect to
@@ -925,20 +988,20 @@ def committer(argv, job, runid, co, tasklist, completed):
             if len(newtmlist) > 0:
                 tmlist = newtmlist
             elif len(tmlist) > 0:
-                logging.warning('New list of task managers is ' +
+                logger.warning('New list of task managers is ' +
                                 'empty and will not be updated!')
         except:
-            logging.error('Failed parsing task manager list!')
+            logger.error('Failed parsing task manager list!')
 
         for name, tm in tmlist.items():
-            logging.debug('Connecting to %s:%d...', tm.address, tm.port)
+            logger.debug('Connecting to %s:%d...', tm.address, tm.port)
 
             # Open the connection to the task manager and query if it is
             # possible to send data
             if not setup_endpoint_for_pulling(tm):
                 continue
 
-            logging.debug('Pulling tasks from %s:%d...', tm.address, tm.port)
+            logger.debug('Pulling tasks from %s:%d...', tm.address, tm.port)
 
             # Task pulling loop
             commit_tasks(job, runid, co, tm, tasklist, completed)
@@ -947,12 +1010,12 @@ def committer(argv, job, runid, co, tasklist, completed):
             # Close the connection with the task manager
             tm.Close()
 
-            logging.debug('Finished pulling tasks from %s:%d.',
+            logger.debug('Finished pulling tasks from %s:%d.',
                           tm.address, tm.port)
 
             if len(tasklist) == 0 and completed[0] == 1:
-                logging.info('All tasks committed.')
-                logging.debug('Committer exiting...')
+                logger.info('All tasks committed.')
+                logger.debug('Committer exiting...')
                 return
 
         # Refresh the tasklist
@@ -961,21 +1024,21 @@ def committer(argv, job, runid, co, tasklist, completed):
 
         time.sleep(jm_recv_backoff)
 
-    logging.info("Shutting down Comitter...")
+    logger.info("Shutting down Comitter...")
 
 
 ###############################################################################
 # Kill all task managers
 ###############################################################################
 def killtms():
-    logging.info('Killing task managers...')
+    logger.info('Killing task managers...')
 
     # Load the list of nodes to connect to
     tmlist = load_tm_list()
 
     for name, tm in tmlist.items():
         try:
-            logging.debug('Connecting to %s:%d...', tm.address, tm.port)
+            logger.debug('Connecting to %s:%d...', tm.address, tm.port)
 
             tm.Open(jm_conn_timeout)
 
@@ -989,7 +1052,7 @@ def killtms():
             tm.Close()
         except:
             # Problem connecting to the task manager
-            logging.warning('Error connecting to task manager at %s:%d!',
+            logger.warning('Error connecting to task manager at %s:%d!',
                             tm.address, tm.port)
             log_lines(traceback.format_exc(), logging.debug)
 
@@ -1013,7 +1076,7 @@ def server_callback(conn, addr, port, job):
     :rtype:
     """
     global jm_recv_timeout
-    logging.debug('Connected to {}:{}.'.format(addr, port))
+    logger.debug('Connected to {}:{}.'.format(addr, port))
     # print('Connected to {}:{}.'.format(addr, port))
 
     try:
@@ -1062,10 +1125,10 @@ def server_callback(conn, addr, port, job):
             raise Exception("Don't know option: {}".format(mtype))
 
     except Exception:
-        logging.error(traceback.format_exc())
+        logger.error(traceback.format_exc())
 
     conn.Close()
-    logging.debug('Connection to {}:{} closed.'.format(addr, port))
+    logger.debug('Connection to {}:{} closed.'.format(addr, port))
 
 
 ###############################################################################
@@ -1081,7 +1144,7 @@ def run(argv, jobinfo, job, runid):
     completed = {0: 0}
 
     # Start the Job Manager
-    logging.info("Starting job manager {} for job {}...".format(jm_name, runid))
+    logger.info("Starting job manager {} for job {}...".format(jm_name, runid))
     # Create the job manager from the job module
     jm = job.spits_job_manager_new(argv, jobinfo)
     jmthread = threading.Thread(target=jobmanager, args=(argv, job, runid, jm, tasklist, completed))
@@ -1089,7 +1152,7 @@ def run(argv, jobinfo, job, runid):
     job.spits_set_metric_string("jm_start_time", datetime.datetime.now().strftime("%d-%m-%Y %H:%M:%S.%f"))
 
     # Start the committer
-    logging.info('Starting committer for job {}...'.format(runid))
+    logger.info('Starting committer for job {}...'.format(runid))
     # Create the committer manager from the job module
     co = job.spits_committer_new(argv, jobinfo)
     cothread = threading.Thread(target=committer, args=(argv, job, runid, co, tasklist, completed))
@@ -1102,28 +1165,28 @@ def run(argv, jobinfo, job, runid):
     # server_listener.Join()
 
     # Commit the job
-    logging.info('Committing Job...')
+    logger.info('Committing Job...')
     r, res, ctx = job.spits_committer_commit_job(co, 0x12345678)
-    logging.debug('Job committed.')
+    logger.debug('Job committed.')
 
     # Finalize the job manager
-    logging.debug('Finalizing Job Manager...')
+    logger.debug('Finalizing Job Manager...')
     job.spits_job_manager_finalize(jm)
 
     # Finalize the committer
-    logging.debug('Finalizing Committer...')
+    logger.debug('Finalizing Committer...')
     job.spits_committer_finalize(co)
     memstat.stats()
 
     if res is None:
-        logging.error('Job did not push any result!')
+        logger.error('Job did not push any result!')
         return messaging.res_module_noans, None
 
     if ctx != 0x12345678:
-        logging.error('Context verification failed for job!')
+        logger.error('Context verification failed for job!')
         return messaging.res_module_ctxer, None
 
-    logging.debug('Job {} finished successfully.'.format(runid))
+    logger.debug('Job {} finished successfully.'.format(runid))
 
     return r, res[0]
 
@@ -1133,20 +1196,16 @@ def run(argv, jobinfo, job, runid):
 ###############################################################################
 def main(argv):
     # Print usage
-    global spits_running
-    if len(argv) <= 1:
-        abort('USAGE: jm [jm_args] module [module_args]')
-
-    # Parse the arguments
-    args = Args.Args(argv[1:])
-    parse_global_config(args.args)
+    global spits_running, spits_binary, spits_binary_args, jm_verbosity, \
+        jm_log_file
+    parse_global_config(argv)
 
     # Setup logging
-    setup_log()
-    logging.debug('Hello!')
+    setup_log(jm_verbosity, jm_log_file)
+    logger.debug('Hello!')
 
     # Enable memory debugging
-    if jm_memstat == 1:
+    if jm_memstat:
         memstat.enable()
     memstat.stats()
 
@@ -1155,14 +1214,13 @@ def main(argv):
         PerfModule(make_uid(), 0, jm_perf_rinterv, jm_perf_subsamp)
 
     # Load the module
-    module = args.margs[0]
-    job = JobBinary(module, buffer_size=jm_spits_profile_buffer_size)
+    job = JobBinary(spits_binary, buffer_size=jm_spits_profile_buffer_size)
 
     # Create the metrics manager
     # job.spits_metric_new(jm_spits_profile_buffer_size)
 
     # Remove JM arguments when passing to the module
-    margv = args.margs
+    margv = [spits_binary] + spits_binary_args
 
     # Keep a run identifier
     runid = [0]
@@ -1182,11 +1240,12 @@ def main(argv):
     threading.Thread(target=heartbeat_wrapper).start()
 
     # Start the server listener
-    server_listener = Listener(config.mode_tcp, '0.0.0.0', jm_port, server_callback, (job,))
+    server_listener = Listener(
+        config.mode_tcp, '0.0.0.0', jm_port, server_callback, (job,))
     server_listener.Start()
 
     # Run the module
-    logging.info('Running module...')
+    logger.info('Running module...')
     memstat.stats()
     r = job.spits_main(margv, run_wrapper)
     memstat.stats()
@@ -1209,7 +1268,7 @@ def main(argv):
     # print(metric_history)
 
     # Finalize
-    logging.debug('Bye!')
+    logger.debug('Bye!')
     sys.exit(r)
 
 
@@ -1217,4 +1276,4 @@ def main(argv):
 # Entry point
 ###############################################################################
 if __name__ == '__main__':
-    main(sys.argv)
+    main(sys.argv[1:])

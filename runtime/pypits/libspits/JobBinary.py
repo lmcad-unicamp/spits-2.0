@@ -30,14 +30,16 @@ from libspits import Blob, Pointer
 
 # TODO try-except around C calls
 
+
 class MethodNotFound(Exception):
     pass
+
 
 class JobBinary(object):
     """Class binding for the external job binary loaded by spits"""
 
     # Constructor
-    def __init__(self, filename, buffer_size=100):
+    def __init__(self, filename: str, buffer_size=100):
         """
         Constructor for class
 

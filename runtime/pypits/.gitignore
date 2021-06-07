@@ -4,3 +4,4 @@ __pycache__/
 nodes/
 nodes.txt
 .vscode/
+pypits-venv/

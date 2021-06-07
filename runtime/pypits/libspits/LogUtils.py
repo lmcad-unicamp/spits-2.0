@@ -22,6 +22,33 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS 
 # IN THE SOFTWARE.
+import logging
+import coloredlogs
+
+
+def get_logger(name):
+    return logging.getLogger()
+
+
+def setup_log(verbosity_level: int = 0, filename: str = None):
+    # 0 -> WARNING, 1->INFO, 2->DEBUG
+    formatter = '[%(asctime)s] [%(name)s] [%(levelname)s] [%(threadName)s]: ' \
+                '%(message)s'
+    if verbosity_level <= 0:
+        log_level = logging.WARNING
+    elif verbosity_level == 1:
+        log_level = logging.INFO
+    else:
+        log_level = logging.DEBUG
+
+    print(f"Log leve: {log_level}")
+    if filename:
+        logging.basicConfig(
+            filename=filename, filemode='w', level=log_level, format=formatter)
+    else:
+        logging.basicConfig(level=log_level, format=formatter)
+        coloredlogs.install(level=log_level, format=formatter)
+
 
 def log_lines(text, dest):
     for line in text.split('\n'):

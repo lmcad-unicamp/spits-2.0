@@ -23,7 +23,9 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 # IN THE SOFTWARE.
 
-def_heart_timeout = None      # Default Cloud heartbeat timeout (in seconds)
+def_verbosity = 0
+
+def_heart_timeout = 30        # Default Cloud heartbeat timeout (in seconds)
 def_connection_timeout = 30   # Default connection timeout (in seconds)
 def_send_timeout = 30         # Default send message timeout (in seconds)
 def_receive_timeout = 30      # Default receive message timeout (in seconds)

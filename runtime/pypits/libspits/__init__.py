@@ -22,7 +22,7 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 # IN THE SOFTWARE.
 
-from .LogUtils import *
+from .LogUtils import setup_log, get_logger, log_lines
 
 from .Blob import Blob
 from .Pointer import Pointer
@@ -38,8 +38,10 @@ from .Timeout import timeout
 from .PerfModule import PerfModule
 from .UIDUtils import make_uid
 
+
 def main():
     pass
+
 
 if __name__ == '__main__':
     main()
