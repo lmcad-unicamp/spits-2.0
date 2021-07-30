@@ -29,10 +29,10 @@ def_heart_timeout = 30        # Default Cloud heartbeat timeout (in seconds)
 def_connection_timeout = 30   # Default connection timeout (in seconds)
 def_send_timeout = 30         # Default send message timeout (in seconds)
 def_receive_timeout = 30      # Default receive message timeout (in seconds)
-def_idle_timeout = 360        # Default idle timeout (in seconds)
+def_idle_timeout = 600        # Default idle timeout (in seconds)
 
-send_backoff = 2
-recv_backoff = 2
+send_backoff = 0
+recv_backoff = 0
 
 def_spits_cm_port = 7724
 def_spits_cd_port = 7725

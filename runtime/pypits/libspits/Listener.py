@@ -70,11 +70,11 @@ class Listener(object):
         :raises Exception: if a invalid mode is provided
         """
         if self.mode == config.mode_tcp:
-            return '{}:{}'.format(socket.gethostname(), self.port)
+            return f'{socket.gethostname()}:{self.port}'
         elif self.mode == config.mode_uds:
-            return '{}:{}'.format(socket.gethostname(), self.addr)
+            return f'{socket.gethostname()}:{self.addr}'
         else:
-            raise Exception("Invalid listener mode '{}' provided!".format(self.mode))
+            raise Exception(f"Invalid listener mode '{self.mode}' provided!")
 
     def listener(self):
         """ Server network listener. A callback thread is created for each accepted connection, passing self.user_args
@@ -82,9 +82,9 @@ class Listener(object):
         """
 
         if self.mode == config.mode_tcp:
-            logging.info('Listening to network at {}:{}...'.format(self.addr, self.port))
+            logging.info(f'Listening to network at {self.addr}:{self.port}...')
         elif self.mode == config.mode_uds:
-            logging.info('Listening to file at {}...'.format(self.addr))
+            logging.info(f'Listening to file at {self.addr}...')
         self.running = True
 
         while self.running:
@@ -113,7 +113,7 @@ class Listener(object):
                 logging.debug(sys.exc_info())
                 logging.debug(traceback.format_exc())
 
-        logging.debug("Stopping Network Listener at {}:{}...".format(self.addr, self.port))
+        logging.debug(f"Stopping Network Listener at {self.addr}:{self.port}...")
 
     def Start(self):
         """ Create the socket server and starts the network listeners threads
@@ -145,7 +145,7 @@ class Listener(object):
                 raise Exception('The system does not support Unix Domain Sockets!')
 
         else:
-            raise Exception('Invalid listener mode {} provided!'.format(self.mode))
+            raise Exception(f'Invalid listener mode {self.mode} provided!')
 
         try:
             self.socket = socket.socket(socktype, socket.SOCK_STREAM)

@@ -18,15 +18,20 @@
 #
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+# FITNESS FOR A PARTICULAR PURPOSE AND NON INFRINGEMENT. IN NO EVENT SHALL
 # THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 # IN THE SOFTWARE.
 
-import ctypes, os, struct, sys, datetime
+import struct
+import ctypes
+import os
+import base64
 
+from typing import Union
 from libspits import Blob, Pointer
+
 
 # TODO try-except around C calls
 
@@ -149,83 +154,16 @@ class JobBinary(object):
         ])
 
         self.try_init_method('spits_committer_finalize', None, [
-                ctypes.c_void_p
-        ])
-
-        # Metrics
-
-        self.buffer_size = buffer_size
-
-        self.try_init_method('spits_metric_new', ctypes.c_void_p, [
-            ctypes.c_int
-        ])
-
-        self.try_init_method('spits_set_metric_int', None, [
-            ctypes.c_void_p,
-            ctypes.c_char_p,
-            ctypes.c_int,
-        ])
-
-        self.try_init_method('spits_set_metric_float', None, [
-            ctypes.c_void_p,
-            ctypes.c_char_p,
-            ctypes.c_float,
-        ])
-
-        self.try_init_method('spits_set_metric_double', None, [
-            ctypes.c_void_p,
-            ctypes.c_char_p,
-            ctypes.c_double,
-        ])
-
-        self.try_init_method('spits_set_metric_string', None, [
-            ctypes.c_void_p,
-            ctypes.c_char_p,
-            ctypes.c_char_p,
-        ])
-
-        self.try_init_method('spits_get_metrics_list', ctypes.c_void_p, [
             ctypes.c_void_p
         ])
 
-        self.try_init_method('spits_get_metrics_last_values', ctypes.c_void_p, [
-            ctypes.c_void_p,
-            ctypes.POINTER(ctypes.c_char_p)
-        ])
+        self.metrics = None
 
-        self.try_init_method('spits_get_metrics_history', ctypes.c_void_p, [
-            ctypes.c_void_p,
-            ctypes.POINTER(ctypes.c_char_p),
-            ctypes.POINTER(ctypes.c_int)
-        ])
-
-        self.try_init_method('spits_free_ptr', None, [
-            ctypes.c_void_p
-        ])
-
-        self.try_init_method('spits_metric_reset', None, [
-            ctypes.c_void_p
-        ])
-
-        self.try_init_method('spits_metric_delete', None, [
-            ctypes.c_void_p
-        ])
-
-        self.try_init_method('spits_metrics_debug_dump', None, [
-            ctypes.c_void_p
-        ])
-        
-        self.metrics = self.spits_metric_new()
-    
-    def __del__(self):
-        self.spits_metric_delete()
-
-
-    def try_init_method(self, name, restype, argtypes):
+    def try_init_method(self, name: str, restype, argtypes):
         """Set the specified format for a method in the module,
         if it exists. Return true if it does exist."""
         if not hasattr(self.module, name):
-            return False
+            raise MethodNotFound(f'Invalid ctype method {name}')
         method = getattr(self.module, name)
         method.restype = restype
         method.argtypes = argtypes
@@ -310,10 +248,12 @@ class JobBinary(object):
         # Cast the C arguments
         cargc, cargv = self.c_argv(argv)
         # Call the native method casting the result to a simple pointer
-        return Pointer(self.module.spits_job_manager_new(cargc,
-            cargv, jobinfo.get_pointer(), jobinfo.get_size(), self.metrics.get_value()))
+        return Pointer(self.module.spits_job_manager_new(
+            cargc, cargv, jobinfo.get_pointer(), jobinfo.get_size(),
+            self.metrics.get_value()))
 
-    def spits_job_manager_next_task(self, user_data: Pointer, jmctx: int or Pointer) -> tuple:
+    def spits_job_manager_next_task(self, user_data: Pointer,
+                                    jmctx: Union[Pointer, int]) -> tuple:
         """ Generates a new task using the job manager next_task interface from the job manager instance
 
         :param user_data: Ctype Pointer to the Job Manager instance
@@ -346,12 +286,13 @@ class JobBinary(object):
             # necessary, in any case, check for correctness
             res[1] = (self.to_py_array(ctask, ctasksz),)
             res[2] = ctx
+
         # Get the next task
         res[0] = self.module.spits_job_manager_next_task(p_user_data, self.cpusher(push), jmctx)
         # Return the pushed data along with the return code of the method
         return res
 
-    def spits_job_manager_finalize(self, user_data):
+    def spits_job_manager_finalize(self, user_data: Pointer):
         # Get the native pointer to the user data
         p_user_data = user_data.get_value()
         # Optional function
@@ -365,7 +306,8 @@ class JobBinary(object):
         # Cast the C arguments
         cargc, cargv = self.c_argv(argv)
         # Call the native method casting the result to a simple pointer
-        return Pointer(self.module.spits_worker_new(cargc, cargv, self.metrics.get_value()))
+        return Pointer(self.module.spits_worker_new(
+            cargc, cargv, self.metrics.get_value()))
 
     def spits_worker_run(self, user_data, task, taskctx):
         res = [None, None, None]
@@ -373,15 +315,17 @@ class JobBinary(object):
         p_user_data = user_data.get_value()
         # Create the pointer to task and task size
         ctask, ctasksz = self.to_c_array(task)
+
         # Create an inner converter for the callback
         def push(cres, cressz, ctx):
             # Thanks to python closures, the context is not
             # necessary, in any case, check for correctness
             res[1] = (self.to_py_array(cres, cressz),)
             res[2] = ctx
+
         # Run the task
         res[0] = self.module.spits_worker_run(p_user_data, ctask,
-            ctasksz, self.cpusher(push), taskctx)
+                                              ctasksz, self.cpusher(push), taskctx)
         # Return the pushed data along with the return code of the method
         return res
 
@@ -400,7 +344,8 @@ class JobBinary(object):
         cargc, cargv = self.c_argv(argv)
         # Call the native method casting the result to a simple pointer
         return Pointer(self.module.spits_committer_new(cargc, cargv,
-            jobinfo.get_pointer(), jobinfo.get_size(), self.metrics.get_value()))
+                                                       jobinfo.get_pointer(), jobinfo.get_size(),
+                                                       self.metrics.get_value()))
 
     def spits_committer_commit_pit(self, user_data, result):
         # Create the pointer to result and result size
@@ -413,15 +358,17 @@ class JobBinary(object):
         fres = [None, None, None]
         # Get the native pointer to the user data
         p_user_data = user_data.get_value()
+
         # Create an inner converter for the callback
         def push(cfres, cfressz, ctx):
             # Thanks to python closures, the context is not
             # necessary, in any case, check for correctness
             fres[1] = (self.to_py_array(cfres, cfressz),)
             fres[2] = ctx
+
         # Commit job and get the final result
         fres[0] = self.module.spits_committer_commit_job(p_user_data,
-            self.cpusher(push), jobctx)
+                                                         self.cpusher(push), jobctx)
         # Return the pushed data along with the return code of the method
         return fres
 
@@ -435,233 +382,163 @@ class JobBinary(object):
         # value inside user_data so its ctype will remain unchanged
         return self.module.spits_committer_finalize(p_user_data)
 
-    def spits_metric_new(self):
-        if not hasattr(self.module, 'spits_metrics_new'):
-            return
-        return Pointer(self.module.spits_metrics_new(ctypes.c_int(self.buffer_size)))
 
-    def spits_set_metric_int(self, metric_name, value):  # value as int
-        name = ctypes.c_char_p(metric_name.encode('utf-8'))
-        value_int = ctypes.c_int(value)
-        if not hasattr(self.module, 'spits_set_metric_int'):
-            return
-        return self.module.spits_set_metric_int(self.metrics.get_value(), name, value_int)
+class buffer_info(ctypes.Structure):
+    _fields_ = [
+        ('name', ctypes.c_char_p),
+        ('type', ctypes.c_int),
+        ('capacity', ctypes.c_uint)
+    ]
 
-    def spits_set_metric_float(self, metric_name, value):  # value as float
-        name = ctypes.c_char_p(metric_name.encode('utf-8'))
-        value_float = ctypes.c_float(value)
-        if not hasattr(self.module, 'spits_set_metric_float'):
-            return
-        return self.module.spits_set_metric_float(self.metrics.get_value(), name, value_float)
 
-    def spits_set_metric_double(self, metric_name, value):  # value as double
-        name = ctypes.c_char_p(metric_name.encode('utf-8'))
-        value_double = ctypes.c_double(value)
-        if not hasattr(self.module, 'spits_set_metric_double'):
-            return
-        return self.module.spits_set_metric_double(self.metrics.get_value(), name, value_double)
+class buffer_infos(ctypes.Structure):
+    _fields_ = [
+        ('quantity', ctypes.c_uint),
+        ('infos', ctypes.POINTER(buffer_info))
+    ]
 
-    def spits_set_metric_string(self, metric_name, value):  # value as double
-        name = ctypes.c_char_p(metric_name.encode('utf-8'))
-        value_str = ctypes.c_char_p(value.encode('utf-8'))
-        if not hasattr(self.module, 'spits_set_metric_string'):
-            return
-        return self.module.spits_set_metric_string(self.metrics.get_value(), name, value_str)
 
-    def spits_get_metrics_list(self):
-        if not hasattr(self.module, 'spits_get_metrics_list'):
-            return
+class metric_union(ctypes.Union):
+    _fields_ = [
+        ('c_data', ctypes.POINTER(ctypes.c_ubyte)),
+        ('i_data', ctypes.c_int),
+        ('f_data', ctypes.c_float)
+    ]
 
-        metrics = []
-        m_list = self.module.spits_get_metrics_list(self.metrics.get_value())
-        metrics_str = ctypes.cast(m_list, ctypes.POINTER(ctypes.c_ubyte))
-        num_metrics = self.read_uint64(metrics_str, 0)
-        cursor = 8
 
-        for i in range(0, num_metrics):
-            metric_name = str(self.read_string(metrics_str, cursor))
-            cursor += len(metric_name)+1
-            metric_size = int(self.read_uint64(metrics_str, cursor))
-            cursor += 8
-            metric_type = int(self.read_uint64(metrics_str, cursor))
-            cursor += 8
+class metric_info(ctypes.Structure):
+    _fields_ = [
+        ('data', metric_union),
+        ('data_size', ctypes.c_uint),
+        ('seconds', ctypes.c_ulong),
+        ('nano_seconds', ctypes.c_ulong),
+        ('sequence_no', ctypes.c_uint),
+    ]
 
-            # Integer type
-            if (metric_type == 0):
-                metric_type = 'integer'
-            # Float Type
-            elif (metric_type == 1):
-                metric_type = 'float'
-            # Double Type
-            elif (metric_type == 2):
-                metric_type = 'double'
-            # Bytes type
-            elif (metric_type == 3):
-                metric_type = 'string'
 
-            metrics.append(dict(name=metric_name, capacity=metric_size, type=metric_type))
+class buffer_metrics(ctypes.Structure):
+    _fields_ = [
+        ('name', ctypes.c_char_p),
+        ('type', ctypes.c_uint),
+        ('num_metrics', ctypes.c_uint),
+        ('metrics', ctypes.POINTER(metric_info))
+    ]
 
-        self.spits_free_ptr(m_list)
+
+element_types = {
+    0: 'int',
+    1: 'float',
+    2: 'string',
+    3: 'bytes'
+}
+
+
+class MetricManager:
+    def __init__(self, job_binary: JobBinary, buffer_size: int = 10):
+        self.job_binary = job_binary
+        self.buffer_size = buffer_size
+
+        self.job_binary.try_init_method('spits_metrics_new',
+            ctypes.c_void_p, [ctypes.c_uint])
+        self.job_binary.try_init_method('spits_metrics_delete',
+            None, [ctypes.c_void_p])
+        self.job_binary.try_init_method('spits_get_num_buffers',
+            ctypes.c_uint, [ctypes.c_void_p])
+        self.job_binary.try_init_method('spits_set_metric_int',
+            None, [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int])
+        self.job_binary.try_init_method('spits_set_metric_float',
+            None, [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_float])
+        self.job_binary.try_init_method('spits_set_metric_string',
+            None, [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p])
+        self.job_binary.try_init_method('spits_set_metric_bytes',
+            None, [ctypes.c_void_p, ctypes.c_char_p,
+                ctypes.POINTER(ctypes.c_byte), ctypes.c_uint
+            ])
+        self.job_binary.try_init_method('spits_get_metrics_list',
+            ctypes.POINTER(buffer_infos), [ctypes.c_void_p])
+        self.job_binary.try_init_method('spits_free_metric_list',
+            None, [ctypes.POINTER(buffer_infos)])
+        self.job_binary.try_init_method('spits_get_metrics_history',
+            ctypes.POINTER(buffer_metrics),
+            [ctypes.c_void_p, ctypes.c_uint, ctypes.POINTER(ctypes.c_char_p),
+            ctypes.POINTER(ctypes.c_uint)])
+        self.job_binary.try_init_method('spits_free_metrics_history',
+            None, [ctypes.POINTER(buffer_metrics), ctypes.c_uint])
+
+        self.metric_manager = self.job_binary.module.spits_metrics_new(buffer_size)
+
+    def __del__(self):
+        self.job_binary.module.spits_metrics_delete(self.metric_manager)
+
+    def set_metric(self, metric_name: str, value: Union[int, float, str, bytes]):
+        name = metric_name.encode('ascii')
+        if type(value) is int:
+            self.job_binary.module.spits_set_metric_int(
+                self.metric_manager, name, value)
+        elif type(value) is float:
+            self.job_binary.module.spits_set_metric_float(
+                self.metric_manager, name, value)
+        elif type(value) is str:
+            self.job_binary.module.spits_set_metric_string(
+                self.metric_manager, name, value.encode('ascii'))
+        elif type(value) is bytes:
+            val = ctypes.cast(value, ctypes.POINTER(ctypes.c_byte))
+            self.job_binary.module.spits_set_metric_bytes(
+                self.metric_manager, name, val, len(value))
+        else:
+            raise TypeError(f"Invalid type {type(value)}")
+
+    def get_metrics(self) -> dict:
+        buffers = self.job_binary.module.spits_get_metrics_list(self.metric_manager)
+        metrics = {}
+        info = buffer_infos.from_address(ctypes.addressof(buffers[0]))
+        for i in range(info.quantity):
+            buffer_name = str(info.infos[i].name.decode('ascii'))
+            buffer_type = info.infos[i].type
+            buffer_capacity = info.infos[i].capacity
+            metrics[buffer_name] = {
+                'type': element_types[buffer_type],
+                'capacity': buffer_capacity,
+                'values': []
+            }
+
+        metric_names = list(metrics.keys())
+        num_metrics = len(metric_names)
+        names = (ctypes.c_char_p * num_metrics)(*[m.encode('ascii') for m in metric_names])
+        sizes = (ctypes.c_uint * num_metrics)(*[ metrics[m]['capacity'] for m in metric_names ])
+        metric_values = self.job_binary.module.spits_get_metrics_history(
+            self.metric_manager, ctypes.c_uint(num_metrics), names, sizes
+        )
+
+        for i in range(num_metrics):
+            metric = buffer_metrics.from_address(ctypes.addressof(metric_values[i]))
+            m_name = metric_names[i]
+            for j in range(metric.num_metrics):
+                dsize = metric.metrics[j].data_size
+                sec = metric.metrics[j].seconds
+                nsec = metric.metrics[j].nano_seconds
+                seq = metric.metrics[j].sequence_no
+                if metrics[m_name]['type'] == 'int':
+                    value = metric.metrics[j].data.i_data
+                elif metrics[m_name]['type'] == 'float':
+                    value = metric.metrics[j].data.f_data
+                elif metrics[m_name]['type'] == 'string':
+                    value = ctypes.cast(metric.metrics[j].data.c_data, ctypes.c_char_p)
+                    value = str(value.value.decode('ascii'))
+                else:
+                    value = bytearray(dsize)
+                    for k in range(dsize):
+                        value[k] = metric.metrics[j].data.c_data[k]
+                    value = base64.b64encode(value).decode('ascii')
+
+                metrics[m_name]['values'].append({
+                    'value': value,
+                    'seconds': sec,
+                    'nano_seconds': nsec,
+                    'sequence_no': seq,
+                    'data_size': dsize
+                })
+
+        self.job_binary.module.spits_free_metric_list(buffers)
+        self.job_binary.module.spits_free_metrics_history(metric_values, num_metrics)
         return metrics
-
-    def spits_get_metrics_last_values(self, metric_names):
-        argv = [x.encode('utf8') for x in metric_names]
-        argv.append(None)
-        cargv = (ctypes.c_char_p * len(argv))()
-        cargv[:] = argv
-
-        m_values = self.module.spits_get_metrics_last_values(self.metrics.get_value(), cargv)
-        values = ctypes.cast(m_values, ctypes.POINTER(ctypes.c_ubyte))
-
-        cursor = 0
-        last_values = []
-
-        for metric in metric_names:
-            # Metric type
-            value_type = int(self.read_uint64(values, cursor))
-            cursor += 8
-
-            # Integer type
-            if (value_type == 0):
-                value_type = 'integer'
-                value = int(self.read_uint64(values, cursor))
-                cursor += 8
-            # Float Type
-            elif (value_type == 1):
-                value_type = 'float'
-                value = float(self.read_float(values, cursor))
-                cursor += 4
-            # Double Type
-            elif (value_type == 2):
-                value_type = 'double'
-                value = float(self.read_double(values, cursor))
-                cursor += 8
-            # Bytes type
-            elif (value_type == 3):
-                value_type = 'string'
-                sz = int(self.read_uint64(values, cursor))
-                cursor += 8
-                value = str(self.read_string(values, cursor))
-                cursor += len(value) + 1
-
-            tv_sec = int(self.read_uint64(values, cursor))
-            cursor += 8
-            tv_nsec = int(self.read_uint64(values, cursor))
-            cursor += 8
-            sequence_no = int(self.read_uint64(values, cursor))
-            cursor += 8
-            time = datetime.datetime.fromtimestamp(float('{}.{}'.format(tv_sec, tv_nsec))).strftime("%d-%m-%Y %H:%M:%S.%f")
-
-            #print("Metric: {}, type: {}, value: {}, sec: {}, n_sec: {}, seq_no: {}".format(
-            #    metric_name, value_type, value, tv_sec, tv_nsec, sequence_no))
-            last_values.append(dict(name=str(metric), type=value_type, value=value, 
-                time=time, sequence=sequence_no))
-
-        self.spits_free_ptr(m_values)
-        return last_values
-
-    def spits_get_metrics_history(self, metric_names_values):
-        argv = [name.encode('utf8') for name, _ in metric_names_values]
-        argv.append(None)
-        cargv = (ctypes.c_char_p * len(argv))()
-        cargv[:] = argv
-
-        argv2 = [qtde for _, qtde in metric_names_values]
-        cargv2 = (ctypes.c_int * len(argv2))()
-        cargv2[:] = argv2
-
-        m_values = self.module.spits_get_metrics_history(self.metrics.get_value(), cargv, cargv2)
-        values = ctypes.cast(m_values, ctypes.POINTER(ctypes.c_ubyte))
-
-        cursor = 0
-        last_values = []
-
-        for metric, _ in metric_names_values:
-            # Metric type
-            value_type = int(self.read_uint64(values, cursor))
-            cursor += 8
-
-            sequence_no = int(self.read_uint64(values, cursor))
-            cursor += 8
-
-            no_elements = int(self.read_uint64(values, cursor))
-            cursor += 8
-
-            got_values = []
-
-            for i in range(0, no_elements):
-                # Integer type
-                if (value_type == 0):
-                    v_type = 'integer'
-                    value = int(self.read_uint64(values, cursor))
-                    cursor += 8
-                # Float Type
-                elif (value_type == 1):
-                    v_type = 'float'
-                    value = float(self.read_float(values, cursor))
-                    cursor += 4
-                # Double Type
-                elif (value_type == 2):
-                    v_type = 'double'
-                    value = float(self.read_double(values, cursor))
-                    cursor += 8
-                # Bytes type
-                elif (value_type == 3):
-                    v_type = 'string'
-                    sz = int(self.read_uint64(values, cursor))
-                    cursor += 8
-                    value = str(self.read_string(values, cursor))
-                    cursor += len(value) + 1
-
-                tv_sec = int(self.read_uint64(values, cursor))
-                cursor += 8
-                tv_nsec = int(self.read_uint64(values, cursor))
-                cursor += 8
-
-                time = datetime.datetime.fromtimestamp(float('{}.{}'.format(tv_sec, tv_nsec))).strftime("%d-%m-%Y %H:%M:%S.%f")
-                got_values.append(dict(value=value, time=time, sequence=sequence_no+i))
-
-            last_values.append(dict(name=metric, values=got_values, type=v_type))
-
-        self.spits_free_ptr(m_values)
-        return last_values
-
-    def spits_free_ptr(self, ptr):
-        if not hasattr(self.module, 'spits_free_ptr'):
-            return
-        return self.module.spits_free_ptr(ptr)
-
-    def spits_metrics_reset(self):
-        if not hasattr(self.module, 'spits_metrics_reset'):
-            return
-        return self.module.spits_metrics_reset(self.metrics.get_value())
-
-
-    def spits_metric_delete(self):
-        if not hasattr(self.module, 'spits_metric_delete'):
-            return
-        return self.module.spits_metric_delete(self.metrics.get_value())
-
-    def spits_metrics_debug_dump(self):
-        if not hasattr(self.module, 'spits_metrics_debug_dump'):
-            return
-        return self.module.spits_metrics_debug_dump(self.metrics.get_value())
-
-    def read_string(self, values, initial):
-        cursor_initial = initial
-        cursor_final = initial
-
-        while values[cursor_final] != 0x0:
-            cursor_final += 1
-
-        converted_str = ''.join(chr(i) for i in values[cursor_initial:cursor_final])
-        return converted_str
-
-    def read_uint64(self, values, initial):
-        return int.from_bytes(bytearray(values[initial:initial + 8]), byteorder='big')
-    
-    def read_float(self, values, initial):
-        return struct.unpack('>f', bytearray(values[initial:initial + 4]))[0]
-
-    def read_double(self, values, initial):
-        return struct.unpack('>d', bytearray(values[initial:initial + 8]))[0]

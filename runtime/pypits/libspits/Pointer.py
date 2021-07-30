@@ -24,6 +24,7 @@
 
 import ctypes
 
+
 class Pointer(object):
     """Class encapsulating a pointer to a region of memory"""
 

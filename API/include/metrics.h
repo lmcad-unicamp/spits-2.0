@@ -1,70 +1,81 @@
-/*
- * The MIT License (MIT)
- *
- * Copyright (c) 2020 Otávio Napoli <otavio.napoli@gmail.com>
- * Copyright (c) 2020 Edson Borin <edson@ic.unicamp.br>
- * Copyright (c) 2015 Caian Benedicto <caian@ggaunicamp.com>
- * Copyright (c) 2014 Ian Liu Rodrigues <ian.liu@ggaunicamp.com>
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to
- * deal in the Software without restriction, including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
- * IN THE SOFTWARE.
- */
-
-#ifndef __METRICS_H__
-#define __METRICS_H__
+#ifndef METRICS_H_
+#define METRICS_H_
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* Metrics */
 
-void* spits_metrics_new(int buffer_size);
+enum DataType {
+  TYPE_INT = 0,
+  TYPE_FLOAT = 1,
+  TYPE_STRING = 2,
+  TYPE_BYTES = 3
+};
 
-void spits_set_metric_int(void* metrics, const char* metric_name, int ivalue);
 
-void spits_set_metric_float(void* metrics, const char* metric_name, float fvalue) ;
+/* C Wrapper */
+struct buffer_info {
+  char* name;
+  enum DataType type;
+  unsigned int capacity;
+};
 
-void spits_set_metric_double(void* metrics, const char* metric_name, double dvalue);
+struct buffer_infos {
+  unsigned int quantity;
+  struct buffer_info* infos;
+};
 
-void spits_set_metric_string(void* metrics, const char* metric_name, char* string);
+struct metric_info {
+  union {
+    unsigned char* c_data;
+    int i_data;
+    float f_data;
+  };
 
-void spits_set_metric_bytes(void* metrics, const char* metric_name, unsigned char* byte_array, int size);
+  unsigned int data_size;
+  unsigned long seconds;
+  unsigned long nano_seconds;
+  unsigned int sequence_no;
+};
 
-int spits_get_num_buffers(void* metrics);
+struct buffer_metrics {
+  char* name;
+  unsigned int type;
+  unsigned int num_metrics;
+  struct metric_info* metrics;
+};
 
-void* spits_get_metrics_list(void* metrics);
 
-void* spits_get_metrics_last_values(void* metrics, const char** metrics_list);
+void* spits_metrics_new(unsigned int buffer_size);
 
-void* spits_get_metrics_history(void* metrics, const char** metrics_list, int* sizes);
+void spits_set_metric_int(void* metric_manager, const char* name, \
+      int value);
 
-void spits_free_ptr(void* p);
+void spits_set_metric_float(void* metric_manager, const char* name, \
+      float value);
 
-void spits_metrics_reset(void* metrics);
+void spits_set_metric_string(void* metric_manager, const char* name, \
+      char* value);
 
-void spits_metrics_delete(void* metrics);
+void spits_set_metric_bytes(void* metric_manager, const char* name, \
+    unsigned char* value, unsigned int size);
 
-void spits_metrics_debug_dump(void* metrics);
+unsigned int spits_get_num_buffers(void* metric_manager);
 
+void spits_metrics_delete(void* metric_manager);
+
+struct buffer_infos* spits_get_metrics_list(void* metric_manager);
+
+void spits_free_metric_list(struct buffer_infos* buffers);
+
+struct buffer_metrics* spits_get_metrics_history(void* metric_manager, \
+    unsigned int n_metrics, const char** metrics_list, unsigned int* sizes);
+
+void spits_free_metrics_history(struct buffer_metrics* metrics, \
+    unsigned int n_metrics);
 
 #ifdef __cplusplus
 }
 #endif
-
-#endif /* __METRICS_H__ */
+#endif /* METRICS_H_ */

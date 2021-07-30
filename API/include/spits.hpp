@@ -184,7 +184,7 @@ extern "C" void *spits_job_manager_new(int argc, const char *argv[],
 {
     spits::istream ji(jobinfo, jobinfosz);
     spits::metrics* m = const_cast<spits::metrics*>(reinterpret_cast<const spits::metrics *>(metrics));
-    spits::job_manager *jm = spits_factory->create_job_manager(argc, 
+    spits::job_manager *jm = spits_factory->create_job_manager(argc,
         argv, ji, *m);
     return reinterpret_cast<void*>(jm);
 }
@@ -327,7 +327,7 @@ static int spits_debug_runner(int argc, const char** argv,
                 << std::endl;
             exit(1);
         }
-        
+
         spits_set_metric_int(metrics, "Generated Tasks", tid);
 
         result.clear();
@@ -340,14 +340,14 @@ static int spits_debug_runner(int argc, const char** argv,
                 << std::endl;
             goto dump_task_and_exit;
         }
-        
+
 
         if (task.size() == 0) {
             std::cerr << "[SPITS] Worker didn't push a result!"
                 << std::endl;
             goto dump_task_and_exit;
         }
-        
+
         spits_set_metric_int(metrics, "Executed Tasks", tid);
 
         std::cerr << "[SPITS] Committing task " << tid << "..." << std::endl;
@@ -358,7 +358,7 @@ static int spits_debug_runner(int argc, const char** argv,
                 << std::endl;
             goto dump_result_and_exit;
         }
-        
+
         spits_set_metric_int(metrics, "Commited Tasks", tid);
         tid++;
     }
@@ -390,13 +390,12 @@ static int spits_debug_runner(int argc, const char** argv,
 
     std::cerr << "[SPITS] Finalizing worker..." << std::endl;
     spits_worker_finalize(wk);
-    
-    spits_metrics_debug_dump(metrics);
+
     spits_metrics_delete(metrics);
 
     std::cerr << "[SPITS] Job " << jid << " completed." << std::endl;
     jid++;
-    
+
     delete final_result;
 
     return 0;
@@ -427,7 +426,7 @@ dump_task_and_exit:
         std::cerr << "[SPITS] Task dump generated as " << ss.str() <<
             " [" << (task.size()-1) << " bytes]. " << std::endl;
     }
-    
+
     spits_metrics_delete(metrics);
     delete final_result;
     exit(1);
@@ -438,7 +437,7 @@ int main(int argc, const char** argv)
     std::cerr << "[SPITS] Entering debug mode..." << std::endl;
     spits_main(argc, argv, spits_debug_runner);
     std::cerr << "[SPITS] Spits finished." << std::endl;
-    
+
     delete spits_factory;
     return 0;
 }

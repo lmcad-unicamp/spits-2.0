@@ -1,5 +1,5 @@
 #!/usr/bin/python
-#!/usr/bin/env python
+# !/usr/bin/env python
 
 # The MIT License (MIT)
 #
@@ -24,8 +24,12 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 # IN THE SOFTWARE.
+import argparse
+import uuid
+import time
+from datetime import datetime
 
-from libspits import JobBinary, SimpleEndpoint
+from libspits import JobBinary, setup_log, get_logger, Pointer
 from libspits import Listener, TaskPool
 from libspits import messaging, config
 from libspits import timeout as Timeout
@@ -33,148 +37,217 @@ from libspits import make_uid
 from libspits import log_lines
 from libspits import PerfModule
 
-import Args
-import sys, os, socket, datetime, logging, multiprocessing, struct, time, traceback, json
+import sys, os, socket, logging, multiprocessing, traceback, json
 
 from threading import Lock
 
+from libspits.JobBinary import MetricManager
+
 try:
-    import Queue as queue # Python 2
-except:
-    import queue # Python 3
+    import Queue as queue  # Python 2
+except ImportError:
+    import queue  # Python 3
 
 # Global configuration parameters
-tm_mode = None # Addressing mode
-tm_addr = None # Bind address
-tm_port = None # Bind port
-tm_nw = None # Maximum number of workers
-tm_overfill = 0 # Extra space in the task queue
-tm_announce = None # Mechanism used to broadcast TM address
-tm_log_file = None # Output file for logging
-tm_verbosity = None # Verbosity level for logging
-tm_conn_timeout = None # Socket connect timeout
-tm_recv_timeout = None # Socket receive timeout
-tm_send_timeout = None # Socket send timeout
+tm_mode = ''  # Addressing mode
+tm_addr = ''  # Bind address
+tm_port = 0  # Bind port
+tm_nw = 0       # Maximum number of workers
+tm_overfill = 0  # Extra space in the task queue
+tm_announce = None  # Mechanism used to broadcast TM address
+tm_log_file = None  # Output file for logging
+tm_verbosity = 0    # Verbosity level for logging
+tm_conn_timeout = None  # Socket connect timeout
+tm_recv_timeout = None  # Socket receive timeout
+tm_send_timeout = None  # Socket send timeout
 tm_timeout = None
-tm_profiling = None # 1 to enable profiling
-tm_perf_rinterv = None # Profiling report interval (seconds)
-tm_perf_subsamp = None # Number of samples collected between report intervals
+tm_profiling = None  # 1 to enable profiling
+tm_perf_rinterv = None  # Profiling report interval (seconds)
+tm_perf_subsamp = None  # Number of samples collected between report intervals
 tm_jobid = None
+tm_name = None
 tm_spits_profile_buffer_size = None
+tm_announce_filename = ''
+
+spits_binary = ''
+spits_binary_args = []
+
+metrics_file = None
+tm_hostname = None
+METRICS = None
+
+logger = get_logger(os.path.basename(sys.argv[0]))
 
 ###############################################################################
 # Parse global configuration
 ###############################################################################
-def parse_global_config(argdict):
+def parse_global_config(arguments):
     global tm_mode, tm_addr, tm_port, tm_nw, tm_log_file, tm_verbosity, \
         tm_overfill, tm_announce, tm_conn_timeout, tm_recv_timeout, \
         tm_send_timeout, tm_timeout, tm_profiling, tm_perf_rinterv, \
-        tm_perf_subsamp, tm_jobid, tm_spits_profile_buffer_size
+        tm_perf_subsamp, tm_jobid, tm_spits_profile_buffer_size, tm_name, \
+        spits_binary, spits_binary_args, tm_announce_filename, metrics_file, \
+        tm_hostname
 
-    def as_int(v):
-        if v == None:
-            return None
-        return int(v)
+    parser = argparse.ArgumentParser(description="SPITS Task Manager runtime")
+    parser.add_argument('binary', metavar='PATH', type=str,
+                        help='Path to the SPITS binary')
+    parser.add_argument('binary_args', metavar='ARGS', type=str,
+                        nargs=argparse.REMAINDER,
+                        help='SPITS binary arguments')
+    parser.add_argument('--tmmode', action='store', metavar='MODE',
+                        type=str, default=config.mode_tcp,
+                        help="Task manager addressing mode "
+                             "(default: %(default)s)")
+    parser.add_argument('--tmaddr', action='store', metavar='ADDRESS',
+                        type=str, default='0.0.0.0',
+                        help="Task manager bind address (default: %(default)s)")
+    parser.add_argument('--tmport', action='store', metavar='PORT',
+                        type=int, default=0,
+                        help="Task manager bind port (default: %(default)s)")
+    parser.add_argument('--nw', action='store', metavar='WORKERS',
+                        type=int, default=multiprocessing.cpu_count(),
+                        help="Maximum number of workers (default: %(default)s)")
+    parser.add_argument('--tm-overfill', action='store', metavar='EXTRA',
+                        type=int, default=0,
+                        help="Extra space in the task queue (default: %(default)s)")
+    parser.add_argument('--announce', action='store', metavar='TYPE',
+                        type=str, default=config.announce_file,
+                        help="Mechanism used to broadcast TM address "
+                             "(default: %(default)s)")
+    parser.add_argument('--log', action='store', type=str, metavar='PATH',
+                        help="Redirect log messages to a file")
+    parser.add_argument('--verbose', action='store', metavar='LEVEL',
+                        type=int, default=config.def_verbosity,
+                        help="Verbosity level (default: %(default)s)")
+    parser.add_argument('--ctimeout', action='store', metavar='TIME',
+                        type=int, default=config.def_connection_timeout,
+                        help="Socket connect timeout (default: %(default)s)")
+    parser.add_argument('--rtimeout', action='store', metavar='TIME',
+                        type=int, default=config.def_receive_timeout,
+                        help="Socket receive timeout (default: %(default)s)")
+    parser.add_argument('--stimeout', action='store', metavar='TIME',
+                        type=int, default=config.def_send_timeout,
+                        help="Socket send timeout (default: %(default)s)")
+    parser.add_argument('--idle-timeout', action='store', metavar='TIME',
+                        type=int, default=config.def_idle_timeout,
+                        help="Terminate task manager when idle for timeout "
+                             "seconds (default: %(default)s)")
+    parser.add_argument('--profile', action='store_true', default=False,
+                        help="Enable job manager profiling (default: %(default)s)")
+    parser.add_argument('--perf-interval', action='store', metavar='TIME',
+                        type=int, default=60,
+                        help="Profiling report interval (in seconds) "
+                             "(default: %(default)s)")
+    parser.add_argument('--perf-subsamp', action='store', metavar='TIME',
+                        type=int, default=12,
+                        help="Number of samples collected between report "
+                             "intervals (default: %(default)s)")
+    parser.add_argument('--name', action='store', type=str, default='',
+                        help="Name for the Job Manager")
+    parser.add_argument('--jobid', action='store', metavar='ID',
+                        type=str, default='', help="ID of the job")
+    parser.add_argument('--metric-buffer', action='store', type=int, default=10,
+                        help="Number of elements for each metric buffer "
+                             "(default: %(default)s)")
+    parser.add_argument('--announce-file', action='store', type=str,
+                        help='Name of the file to announce')
+    parser.add_argument('--metrics-file', action='store', type=str,
+                        help="Dump metrics to file when process ends")
+    parser.add_argument('--hostname', action='store', type=str,
+                        help="Hostname to use")
 
-    def as_float(v):
-        if v == None:
-            return None
-        return int(v)
+    args = parser.parse_args(arguments)
+    spits_binary = args.binary
+    if not os.path.isfile(spits_binary):
+        raise ValueError(f"Invalid spits binary at: {spits_binary}")
+    spits_binary_args = args.binary_args
+    tm_mode = args.tmmode
+    tm_addr = args.tmaddr
+    tm_port = args.tmport
+    tm_nw = args.nw
+    tm_overfill = args.tm_overfill
+    tm_announce = args.announce
+    tm_log_file = args.log
+    tm_verbosity = args.verbose
+    tm_conn_timeout = args.ctimeout
+    tm_recv_timeout = args.rtimeout
+    tm_send_timeout = args.stimeout
+    tm_timeout = args.idle_timeout
+    tm_profiling = args.profile
+    tm_perf_rinterv = args.perf_interval
+    tm_perf_subsamp = args.perf_subsamp
+    tm_name = args.name or f'Task-Manager-{str(uuid.uuid4()).replace("-", "")}'
+    tm_jobid = args.jobid
+    tm_spits_profile_buffer_size = args.metric_buffer
+    tm_announce_filename = args.announce_file
+    tm_hostname = args.hostname
+    metrics_file = args.metrics_file
 
-    tm_mode = argdict.get('tmmode', config.mode_tcp)
-    tm_addr = argdict.get('tmaddr', '0.0.0.0')
-    tm_port = int(argdict.get('tmport', 0))
-    tm_nw = int(argdict.get('nw', multiprocessing.cpu_count()))
-    if tm_nw <= 0:
-        tm_nw = multiprocessing.cpu_count()
-    tm_overfill = max(int(argdict.get('overfill', 0)), 0)
-    tm_announce = argdict.get('announce', 'none')
-    tm_log_file = argdict.get('log', None)
-    tm_verbosity = as_int(argdict.get('verbose', logging.INFO // 10)) * 10
-    tm_conn_timeout = as_float(argdict.get('ctimeout', config.def_connection_timeout))
-    tm_recv_timeout = as_float(argdict.get('rtimeout', config.def_receive_timeout))
-    tm_send_timeout = as_float(argdict.get('stimeout', config.def_send_timeout))
-    tm_timeout = as_float(argdict.get('timeout', config.def_idle_timeout))
-    tm_profiling = as_int(argdict.get('profiling', 0))
-    tm_perf_rinterv = as_int(argdict.get('rinterv', 60))
-    tm_perf_subsamp = as_int(argdict.get('subsamp', 12))
-    tm_jobid = argdict.get('jobid', '')
-    tm_spits_profile_buffer_size = as_int(argdict.get('profile-buffer', 100))
-
-###############################################################################
-# Configure the log output format
-###############################################################################
-def setup_log():
-    root = logging.getLogger()
-    root.setLevel(tm_verbosity)
-    root.handlers = []
-    if tm_log_file == None:
-        ch = logging.StreamHandler(sys.stderr)
-    else:
-        ch = logging.StreamHandler(open(tm_log_file, 'wt'))
-    ch.setLevel(logging.DEBUG)
-    formatter = logging.Formatter('%(asctime)s - %(threadName)s - '+
-        '%(levelname)s - %(message)s')
-    ch.setFormatter(formatter)
-    root.addHandler(ch)
 
 ###############################################################################
 # Abort the aplication with message
 ###############################################################################
 def abort(error):
-    logging.critical(error)
+    logger.critical(error)
     exit(1)
+
 
 ###############################################################################
 # Append the node address to the nodes list
 ###############################################################################
-def announce_cat(addr, filename = None):
+def announce_cat(addr: str, filename: str = None):
     # Override the filename if it is empty
-    if filename == None:
+    if filename is None:
         nodefile = 'nodes.txt'
         filename = os.path.join('.', nodefile)
-
-    logging.debug('Appending node %s to file %s...' % (addr, nodefile))
+        logger.debug(f'Appending node {addr} to file {nodefile}...')
 
     try:
         f = open(filename, "a")
         f.write("node %s\n" % addr)
         f.close()
     except:
-        logging.warning('Failed to write to %s!' % (nodefile,))
+        logger.warning(f'Failed to write to {filename}!')
+
 
 ###############################################################################
 # Add the node to a directory as a file
 ###############################################################################
-def announce_file(addr, dirname = None):
+def announce_file(addr: str):
+    global tm_announce_filename
     # Override the dirname if it is empty
-    if dirname == None:
+    if tm_announce_filename is None:
         dirname = 'nodes'
-        try:
-            os.makedirs(dirname)
-        except:
-            pass
+        os.makedirs(dirname, exist_ok=True)
+        # Create a unique filename for the process
+        tm_announce_filename = os.path.join('.', dirname, make_uid())
 
-    # Create a unique filename for the process
-    uid = make_uid()
-    filename = os.path.join('.', dirname, uid)
-
-    logging.debug('Adding node %s to directory %s...' %
-        (addr, dirname))
-
+    logger.info(f"Adding node {addr} to directory {tm_announce_filename}...")
     try:
-        f = open(filename, "w")
-        f.write("node %s\n" % addr)
-        f.close()
+        with open(tm_announce_filename, 'w') as f:
+            f.write(f"node {addr}\n")
     except:
-        logging.warning('Failed to write to %s!' % (filename,))
+        logger.warning(f'Failed to write to {tm_announce_filename}!')
+
+
+def terminate():
+    global metrics_file, METRICS
+
+    if metrics_file is not None:
+        with open(metrics_file, 'w') as f:
+            metrics_final = METRICS.get_metrics()
+            json.dump(metrics_final, f, indent=4, sort_keys=True)
+
+    os._exit(0)
+
 
 ###############################################################################
 # Server callback
 ###############################################################################
-def server_callback(conn, addr, port, job, tpool, cqueue, timeout):
+def server_callback(conn, addr, port, job, metrics, tpool, cqueue, timeout):
     global tm_recv_timeout, tm_send_timeout
-    logging.debug('Connected to {}:{}.'.format(addr, port))
+    logger.debug('Connected to {}:{}.'.format(addr, port))
 
     try:
         # Send the job identifier
@@ -184,8 +257,8 @@ def server_callback(conn, addr, port, job, tpool, cqueue, timeout):
         jobid = conn.ReadString(tm_recv_timeout)
 
         if tm_jobid != jobid:
-            logging.error('Job Id mismatch from {}:{}! Self: {}, task manager: {}!'.format(
-                conn.address, conn.port, tm_jobid, jobid))
+            logger.error(f'Job Id mismatch from {conn.address}:{conn.port}! '
+                         f'Self: {tm_jobid}, other: {jobid}!')
             conn.Close()
             return False
 
@@ -195,12 +268,12 @@ def server_callback(conn, addr, port, job, tpool, cqueue, timeout):
 
         # Termination signal
         if mtype == messaging.msg_terminate:
-            logging.info('Received a kill signal from {}:{}.'.format(addr, port))
-            os._exit(0)
+            logger.info(f'Received a kill signal from {addr}:{port}.')
+            terminate()
 
         # Job manager is sending heartbeats
         if mtype == messaging.msg_send_heart:
-            logging.debug('Received heartbeat from {}:{}'.format(addr, port))
+            logger.debug(f'Received heartbeat from {addr}:{port}')
 
         # Job manager is trying to send tasks to the task manager
         elif mtype == messaging.msg_send_task:
@@ -213,13 +286,13 @@ def server_callback(conn, addr, port, job, tpool, cqueue, timeout):
                 runid = conn.ReadInt64(tm_recv_timeout)
                 tasksz = conn.ReadInt64(tm_recv_timeout)
                 task = conn.Read(tasksz, tm_recv_timeout)
-                logging.info('Received task {} from {}:{}.'.format(taskid, addr, port))
+                logger.info('Received task {} from {}:{}.'.format(taskid, addr, port))
 
                 # Try enqueue the received task
                 if not tpool.Put(taskid, runid, task):
                     # For some reason the pool got full in between
                     # (shouldn't happen)
-                    logging.warning('Rejecting task %d because the pool is full!', taskid)
+                    logger.warning('Rejecting task %d because the pool is full!', taskid)
                     conn.WriteInt64(messaging.msg_send_rjct)
 
             # Task pool is full, stop receiving tasks
@@ -235,7 +308,7 @@ def server_callback(conn, addr, port, job, tpool, cqueue, timeout):
                     # Pop the task
                     taskid, runid, r, res = cqueue.get_nowait()
 
-                    logging.info('Sending task {} to committer {}:{}...'.format(taskid, addr, port))
+                    logger.info('Sending task {} to committer {}:{}...'.format(taskid, addr, port))
 
                     # Send the task
                     conn.WriteInt64(taskid)
@@ -251,7 +324,7 @@ def server_callback(conn, addr, port, job, tpool, cqueue, timeout):
                     # been received by the other side
                     ans = conn.ReadInt64(messaging.msg_read_result)
                     if ans != messaging.msg_read_result:
-                        logging.warning('Unknown response received from {}:{} while committing task'.format(addr, port))
+                        logger.warning('Unknown response received from {}:{} while committing task'.format(addr, port))
                         raise messaging.MessagingError()
 
                     taskid = None
@@ -265,97 +338,73 @@ def server_callback(conn, addr, port, job, tpool, cqueue, timeout):
                 # the last task back in the queue
                 if taskid is not None:
                     cqueue.put((taskid, runid, r, res))
-                    logging.info('Task {} put back in the queue.'.format(taskid))
+                    logger.info('Task {} put back in the queue.'.format(taskid))
                 pass
 
         elif mtype == messaging.msg_cd_query_metrics_list:
-            metrics_list = job.spits_get_metrics_list()
-            metrics_json = {
-                "metrics": [
-                    {
-                        "name": metric[0],
-                        "type": metric[2],
-                        "capacity": metric[1]
-                    } for metric in metrics_list
-                ]
-            }
-            message_json = json.dumps(metrics_json)
-            if message_json is not None:
-                conn.WriteString(message_json)
-
-        elif mtype == messaging.msg_cd_query_metrics_last_values:
-            # Metrics list JSON. Format: {"metrics": ["metric1", "metric2", ...]}
-            metrics_list = conn.ReadString(tm_recv_timeout)
-            metrics_list = json.loads(metrics_list)
-            metrics_last_values = job.spits_get_metrics_last_values(metrics_list['metrics'])
-            metrics_json = {
-                "metrics": [
-                    {
-                        "name": metric_value[0],
-                        "value": metric_value[1],
-                        "sec": metric_value[2],
-                        "nsec": metric_value[3],
-                        "sequence": metric_value[4]
-                    } for metric_value in metrics_last_values
-                ]
-            }
-
-            message_json = json.dumps(metrics_json)
-            if message_json is not None:
-                conn.WriteString(message_json)
-
-        elif mtype == messaging.msg_cd_query_metrics_history:
-            pass
+            metrics = metrics.get_metrics()
+            metrics = json.dumps(metrics)
+            conn.WriteString(metrics)
 
         # Unknow message received or a wrong sized packet could be trashing
         # the buffer, don't do anything
         else:
-            logging.warning("Unknown message received '{}'!".format(mtype))
+            logger.warning(f"Unknown message received '{mtype}'!")
 
     except messaging.SocketClosed:
-        logging.debug('Connection to {}:{} closed from the other side.'.format(addr, port))
+        logger.debug(f'Connection to {addr}:{port} closed from the other side.')
 
     except socket.timeout:
-        logging.warning('Connection to {}:{} timed out!'.format(addr, port))
+        logger.warning(f'Connection to {addr}:{port} timed out!')
 
     except:
-        logging.warning('Error occurred while reading request from {}:{}!'.format(addr, port))
+        logger.warning(f'Error occurred while reading request from {addr}:{port}!')
         log_lines(traceback.format_exc(), logging.debug)
 
     conn.Close()
-    logging.debug('Connection to {}:{} closed.'.format(addr, port))
+    logger.debug(f'Connection to {addr}:{port} closed.')
+
 
 ###############################################################################
 # Initializer routine for the worker
 ###############################################################################
-def initializer(cqueue, job, argv, active_workers, timeout):
-    logging.info('Initializing worker...')
+def initializer(cqueue, job, metrics, argv, active_workers, timeout):
+    logger.info('Initializing worker...')
     return job.spits_worker_new(argv)
+
 
 ###############################################################################
 # Worker routine
 ###############################################################################
-def worker(state, taskid, runid, task, cqueue, job, argv, active_workers, timeout):
+TASKS_PROCESSED = 0
+def worker(state, taskid, runid, task, cqueue, job, metrics: MetricManager, argv, active_workers, timeout):
+    global TASKS_PROCESSED
     timeout.reset()
     active_workers.inc()
-    logging.info('Processing task %d from job %d...', taskid, runid)
+    logger.info('Processing task %d from job %d...', taskid, runid)
 
     # Execute the task using the job module
+    start_time = time.time()
     r, res, ctx = job.spits_worker_run(state, task, taskid)
+    task_time = time.time() - start_time
 
-    logging.info('Task %d processed.', taskid)
+    logger.info('Task %d processed.', taskid)
 
-    if res == None:
-        logging.error('Task %d did not push any result!', taskid)
+    if res is None:
+        logger.error('Task %d did not push any result!', taskid)
         return
 
     if ctx != taskid:
-        logging.error('Context verification failed for task %d!', taskid)
+        logger.error('Context verification failed for task %d!', taskid)
         return
 
     # Enqueue the result
+    TASKS_PROCESSED += 1
+    metrics.set_metric("tasks_processed", TASKS_PROCESSED)
+    metrics.set_metric("task_time", task_time)
     cqueue.put((taskid, runid, r, res[0]))
     active_workers.dec()
+
 
 ###############################################################################
 # Run routine
@@ -382,64 +431,76 @@ class AtomicInc(object):
 
 
 class App(object):
-    def __init__(self, args):
-        self.args = args
+    def __init__(self):
+        global spits_binary, spits_binary_args, tm_nw, tm_overfill, tm_mode, \
+            tm_addr, tm_port, METRICS
+        self.margv = [spits_binary] + spits_binary_args
         self.timeout = Timeout(tm_timeout, self.timeout_exit)
-        self.job = JobBinary(args.margs[0])
+        self.job = JobBinary(spits_binary)
+        self.metrics = MetricManager(self.job, buffer_size=10)
+        METRICS = self.metrics
+        self.job.metrics = Pointer(self.metrics.metric_manager)
         self.cqueue = queue.Queue()
         self.active_workers = AtomicInc()
-        data = (self.cqueue, self.job, self.args.margs, self.active_workers, self.timeout)
+        data = (self.cqueue, self.job, self.metrics, self.margv, self.active_workers, self.timeout)
         self.tpool = TaskPool(tm_nw, tm_overfill, initializer, worker, data)
         self.server = Listener(tm_mode, tm_addr, tm_port, server_callback,
-                               (self.job, self.tpool, self.cqueue, self.timeout))
+                               (self.job, self.metrics, self.tpool, self.cqueue, self.timeout))
 
     def run(self):
-        global tm_spits_profile_buffer_size
-        #self.job.spits_metric_new(tm_spits_profile_buffer_size)
-        #self.job.spits_set_metric_int("created_time", int(time.time()))
-        argv = self.args.margs
+        global tm_spits_profile_buffer_size, tm_nw, tm_perf_rinterv, \
+            tm_perf_subsamp, tm_profiling, tm_announce, metrics_file, \
+            tm_hostname
+        # self.job.spits_metric_new(tm_spits_profile_buffer_size)
+        # self.job.spits_set_metric_int("created_time", int(time.time()))
         # Enable perf module
         if tm_profiling:
             PerfModule(make_uid(), tm_nw, tm_perf_rinterv, tm_perf_subsamp)
 
         self.timeout.reset()
-        logging.info('Starting workers...')
+        logger.info('Starting workers...')
         self.tpool.start()
-        logging.info('Starting network listener...')
+        logger.info('Starting network listener...')
         self.server.Start()
-        addr = self.server.GetConnectableAddr()
-        logging.info('ANNOUNCE %s' % addr)
+        if tm_hostname:
+            addr = f"{tm_hostname}:{self.server.port}"
+        else:
+            addr = self.server.GetConnectableAddr()
         if tm_announce == config.announce_cat_nodes:
             announce_cat(addr)
         elif tm_announce == config.announce_file:
             announce_file(addr)
-        logging.info('Waiting for work...')
+        logger.info(f'Announcing: {addr}')
+        logger.info('Waiting for work...')
+        #self.job.spits_set_metric_string("tm_start_time", datetime.datetime.now().strftime("%d-%m-%Y %H:%M:%S.%f"))
         self.server.Join()
-        #self.job.spits_metric_finish()
+        self.server.Stop()
+        # self.job.spits_metric_finish()
 
     def timeout_exit(self):
         if self.tpool.Empty() and self.active_workers.get() <= 0:
-            logging.error('Task Manager exited due to timeout')
+            logger.error('Task Manager exited due to timeout')
+            self.server.Stop()
             sys.exit(1)
-            return False
         else:
             return True
+
 
 ###############################################################################
 # Main routine
 ###############################################################################
 def main(argv):
-    if len(argv) <= 1:
-        abort('USAGE: tm [args] module [module args]')
-    args = Args.Args(argv[1:])
-    parse_global_config(args.args)
-    setup_log()
-    logging.debug('Hello!')
-    App(args).run()
-    logging.debug('Bye!')
+    global tm_verbosity, tm_log_file
+    parse_global_config(argv)
+    setup_log(tm_verbosity, tm_log_file)
+    logger.debug('Hello!')
+    App().run()
+    logger.debug('Bye!')
+    terminate()
+
 
 ###############################################################################
 # Entry point
 ###############################################################################
 if __name__ == '__main__':
-    main(sys.argv)
+    main(sys.argv[1:])

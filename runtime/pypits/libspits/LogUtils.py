@@ -35,7 +35,7 @@ def setup_log(verbosity_level: int = 0, filename: str = None):
     formatter = '[%(asctime)s] [%(name)s] [%(levelname)s] [%(threadName)s]: ' \
                 '%(message)s'
     if verbosity_level <= 0:
-        log_level = logging.WARNING
+        log_level = logging.ERROR
     elif verbosity_level == 1:
         log_level = logging.INFO
     else:
